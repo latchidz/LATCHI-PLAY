@@ -49,7 +49,7 @@ public final class CatalogClient {
     }
 
     public interface Callback {
-        void onSuccess(List<CatalogItem> items);
+        void onSuccess(CatalogPage page);
         void onError(Failure failure);
     }
 
@@ -64,6 +64,9 @@ public final class CatalogClient {
     private static final Pattern TITLE_ATTR = Pattern.compile("title=[\\\"']([^\\\"']+)[\\\"']", Pattern.CASE_INSENSITIVE);
     private static final Pattern IMAGE_ATTR = Pattern.compile("(?:data-src|src)=[\\\"']?([^\\s\\\"'>]+)", Pattern.CASE_INSENSITIVE);
     private static final Pattern ALT_ATTR = Pattern.compile("alt=[\\\"']([^\\\"']+)[\\\"']", Pattern.CASE_INSENSITIVE);
+    private static final Pattern NEXT_LINK = Pattern.compile(
+            "<a\\s+[^>]*href=[\\\"']([^\\\"']+)[\\\"'][^>]*>(.*?)</a>",
+            Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
 
     private final ExecutorService executor = Executors.newFixedThreadPool(2);
     private final AtomicBoolean destroyed = new AtomicBoolean(false);
@@ -110,8 +113,10 @@ public final class CatalogClient {
                     }
                 }
 
-                List<CatalogItem> items = parse(html.toString());
-                if (!destroyed.get()) callback.onSuccess(items);
+                String document = html.toString();
+                List<CatalogItem> items = parse(document);
+                String nextPageUrl = findNextPageUrl(document);
+                if (!destroyed.get()) callback.onSuccess(new CatalogPage(items, nextPageUrl));
             } catch (SocketTimeoutException error) {
                 dispatchError(callback, Failure.of(FailureType.TIMEOUT));
             } catch (UnknownHostException error) {
@@ -169,6 +174,17 @@ public final class CatalogClient {
             result.add(new CatalogItem(title, image, url, type));
         }
         return result;
+    }
+
+    private String findNextPageUrl(String html) {
+        Matcher matcher = NEXT_LINK.matcher(html);
+        while (matcher.find()) {
+            String label = decode(matcher.group(2).replaceAll("<[^>]+>", "")).trim();
+            if (!(label.equals("›") || label.equalsIgnoreCase("next") || label.equals("التالي"))) continue;
+            String candidate = decode(matcher.group(1));
+            if (isAllowedUrl(candidate)) return candidate;
+        }
+        return null;
     }
 
     private boolean isAllowedUrl(String value) {

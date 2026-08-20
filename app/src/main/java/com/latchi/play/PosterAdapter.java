@@ -106,11 +106,22 @@ public final class PosterAdapter extends RecyclerView.Adapter<PosterAdapter.Hold
         CatalogItem item = items.get(position);
         holder.title.setText(item.title);
         holder.badge.setText(badgeText(item));
-        Glide.with(holder.poster).load(item.imageUrl).diskCacheStrategy(DiskCacheStrategy.ALL)
-                .placeholder(android.R.color.darker_gray)
-                .error(android.R.color.darker_gray)
-                .centerCrop()
-                .into(holder.poster);
+        boolean landscapeCover = item.imageUrl != null &&
+                (item.imageUrl.toLowerCase().contains("cover") || item.imageUrl.contains("470x264"));
+        holder.poster.setBackgroundColor(Color.rgb(12, 10, 17));
+        if (landscapeCover) {
+            Glide.with(holder.poster).load(item.imageUrl).diskCacheStrategy(DiskCacheStrategy.ALL)
+                    .placeholder(android.R.color.darker_gray)
+                    .error(android.R.color.darker_gray)
+                    .fitCenter()
+                    .into(holder.poster);
+        } else {
+            Glide.with(holder.poster).load(item.imageUrl).diskCacheStrategy(DiskCacheStrategy.ALL)
+                    .placeholder(android.R.color.darker_gray)
+                    .error(android.R.color.darker_gray)
+                    .centerCrop()
+                    .into(holder.poster);
+        }
         holder.itemView.setOnClickListener(v -> listener.onOpen(item));
     }
 

@@ -7,6 +7,10 @@
     <string name="load_watch_failed">تعذّر تحميل صفحة المشاهدة</string>
     <string name="no_internet">لا يوجد اتصال بالإنترنت\nتحقق من الاتصال وحاول مرة أخرى</string>
     <string name="retry">إعادة المحاولة</string>
+    <string name="retry_more">إعادة تحميل المزيد</string>
+    <string name="loading_more">جارٍ تحميل المزيد…</string>
+    <string name="offline_title">%1$s • دون اتصال</string>
+    <string name="cached_title">%1$s • نسخة محفوظة</string>
     <string name="back">رجوع</string>
     <string name="external_window_blocked">تم منع نافذة خارجية</string>
 </resources>

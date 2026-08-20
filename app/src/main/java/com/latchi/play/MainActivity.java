@@ -23,7 +23,10 @@ import android.widget.TextView;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 public class MainActivity extends Activity {
     private static final String BASE = "https://shooflive.net/";
@@ -34,15 +37,22 @@ public class MainActivity extends Activity {
 
     private boolean television;
     private CatalogClient client;
+    private CatalogCache catalogCache;
     private PosterAdapter adapter;
     private RecyclerView grid;
     private ProgressBar progress;
+    private ProgressBar paginationProgress;
+    private Button paginationRetry;
     private TextView screenTitle;
     private ContentStateView stateView;
     private UpdateManager updateManager;
+    private final List<CatalogItem> currentItems = new ArrayList<>();
     private int requestGeneration;
     private String activeUrl;
+    private String activeTitle;
+    private String nextPageUrl;
     private boolean loading;
+    private boolean loadingNext;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -54,6 +64,7 @@ public class MainActivity extends Activity {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
         client = new CatalogClient();
+        catalogCache = new CatalogCache(getApplicationContext());
         buildUi();
         updateManager = new UpdateManager(this);
         updateManager.checkAutomatically();
@@ -125,34 +136,97 @@ public class MainActivity extends Activity {
 
         stateView = new ContentStateView(this, television);
         content.addView(stateView, new FrameLayout.LayoutParams(-1, -1));
+
+        paginationProgress = new ProgressBar(this);
+        paginationProgress.setIndeterminate(true);
+        paginationProgress.setContentDescription(getString(R.string.loading_more));
+        paginationProgress.setIndeterminateTintList(android.content.res.ColorStateList.valueOf(PURPLE));
+        paginationProgress.setVisibility(View.GONE);
+        FrameLayout.LayoutParams progressParams = new FrameLayout.LayoutParams(
+                dp(television ? 48 : 40), dp(television ? 48 : 40), Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+        progressParams.bottomMargin = dp(12);
+        content.addView(paginationProgress, progressParams);
+
+        paginationRetry = actionButton(getString(R.string.retry_more));
+        paginationRetry.setVisibility(View.GONE);
+        paginationRetry.setOnClickListener(view -> loadNextPage());
+        FrameLayout.LayoutParams retryParams = new FrameLayout.LayoutParams(
+                dp(television ? 230 : 180), dp(television ? 54 : 46), Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+        retryParams.bottomMargin = dp(12);
+        content.addView(paginationRetry, retryParams);
+
+        grid.addOnScrollListener(new RecyclerView.OnScrollListener() {
+            @Override
+            public void onScrolled(RecyclerView recyclerView, int dx, int dy) {
+                if (dy <= 0 || loading || loadingNext || nextPageUrl == null) return;
+                GridLayoutManager manager = (GridLayoutManager) recyclerView.getLayoutManager();
+                if (manager == null) return;
+                int threshold = television ? 10 : 6;
+                if (manager.findLastVisibleItemPosition() >= adapter.getItemCount() - threshold) {
+                    loadNextPage();
+                }
+            }
+        });
     }
 
     private void loadPage(String url, String title) {
         if (loading && url.equals(activeUrl)) return;
 
-        screenTitle.setText(title);
         activeUrl = url;
+        activeTitle = title;
         loading = true;
+        loadingNext = false;
+        nextPageUrl = null;
+        currentItems.clear();
         int generation = ++requestGeneration;
 
-        if (!DeviceUtils.hasInternetConnection(this)) {
-            loading = false;
-            showLoadError(url, title, getString(R.string.no_internet));
-            return;
-        }
-
+        screenTitle.setText(title);
         progress.setVisibility(View.VISIBLE);
+        paginationProgress.setVisibility(View.GONE);
+        paginationRetry.setVisibility(View.GONE);
         grid.setVisibility(View.GONE);
         stateView.showMessage(getString(R.string.loading_content));
 
+        catalogCache.read(url, entry -> runOnUiThread(() -> {
+            if (!isCurrentRequest(generation)) return;
+            boolean hasCache = entry != null && !entry.items.isEmpty();
+            if (hasCache) {
+                currentItems.addAll(entry.items);
+                nextPageUrl = entry.nextPageUrl;
+                adapter.submit(currentItems);
+                stateView.hide();
+                grid.setVisibility(View.VISIBLE);
+            }
+
+            if (!DeviceUtils.hasInternetConnection(this)) {
+                loading = false;
+                progress.setVisibility(View.GONE);
+                if (hasCache) screenTitle.setText(getString(R.string.offline_title, title));
+                else showLoadError(url, title, getString(R.string.no_internet));
+                return;
+            }
+            fetchFirstPage(url, title, generation, hasCache);
+        }));
+    }
+
+    private void fetchFirstPage(String url, String title, int generation, boolean hasCache) {
         client.load(url, new CatalogClient.Callback() {
             @Override
-            public void onSuccess(List<CatalogItem> items) {
+            public void onSuccess(CatalogPage page) {
                 runOnUiThread(() -> {
                     if (!isCurrentRequest(generation)) return;
                     loading = false;
                     progress.setVisibility(View.GONE);
-                    if (items.isEmpty()) {
+                    screenTitle.setText(title);
+                    if (page.items.isEmpty() && hasCache && !currentItems.isEmpty()) {
+                        screenTitle.setText(getString(R.string.cached_title, title));
+                        return;
+                    }
+                    currentItems.clear();
+                    currentItems.addAll(page.items);
+                    nextPageUrl = page.nextPageUrl;
+
+                    if (currentItems.isEmpty()) {
                         grid.setVisibility(View.GONE);
                         stateView.showMessage(getString(R.string.no_results));
                         return;
@@ -160,12 +234,9 @@ public class MainActivity extends Activity {
 
                     stateView.hide();
                     grid.setVisibility(View.VISIBLE);
-                    adapter.submit(items);
-                    if (television) grid.postDelayed(() -> {
-                        RecyclerView.ViewHolder holder = grid.findViewHolderForAdapterPosition(0);
-                        if (holder != null) holder.itemView.requestFocus();
-                        else grid.requestFocus();
-                    }, 250);
+                    adapter.submit(currentItems);
+                    catalogCache.write(url, currentItems, nextPageUrl);
+                    focusFirstCard();
                 });
             }
 
@@ -175,8 +246,11 @@ public class MainActivity extends Activity {
                     if (!isCurrentRequest(generation)) return;
                     loading = false;
                     progress.setVisibility(View.GONE);
-                    String message = failure.type == CatalogClient.FailureType.NETWORK ||
-                            failure.type == CatalogClient.FailureType.TIMEOUT
+                    if (hasCache && !currentItems.isEmpty()) {
+                        screenTitle.setText(getString(R.string.offline_title, title));
+                        return;
+                    }
+                    String message = isNetworkFailure(failure)
                             ? getString(R.string.no_internet)
                             : getString(R.string.load_content_failed);
                     showLoadError(url, title, message);
@@ -185,12 +259,76 @@ public class MainActivity extends Activity {
         });
     }
 
+    private void loadNextPage() {
+        if (loading || loadingNext || nextPageUrl == null || activeUrl == null) return;
+        if (!DeviceUtils.hasInternetConnection(this)) {
+            screenTitle.setText(getString(R.string.offline_title, activeTitle));
+            paginationRetry.setVisibility(View.VISIBLE);
+            return;
+        }
+
+        final String requestedPage = nextPageUrl;
+        final int generation = requestGeneration;
+        loadingNext = true;
+        paginationRetry.setVisibility(View.GONE);
+        paginationProgress.setVisibility(View.VISIBLE);
+
+        client.load(requestedPage, new CatalogClient.Callback() {
+            @Override
+            public void onSuccess(CatalogPage page) {
+                runOnUiThread(() -> {
+                    if (!isCurrentRequest(generation)) return;
+                    loadingNext = false;
+                    paginationProgress.setVisibility(View.GONE);
+                    mergeItems(page.items);
+                    nextPageUrl = requestedPage.equals(page.nextPageUrl) ? null : page.nextPageUrl;
+                    adapter.submit(currentItems);
+                    catalogCache.write(activeUrl, currentItems, nextPageUrl);
+                });
+            }
+
+            @Override
+            public void onError(CatalogClient.Failure failure) {
+                runOnUiThread(() -> {
+                    if (!isCurrentRequest(generation)) return;
+                    loadingNext = false;
+                    paginationProgress.setVisibility(View.GONE);
+                    paginationRetry.setVisibility(View.VISIBLE);
+                });
+            }
+        });
+    }
+
+    private void mergeItems(List<CatalogItem> incoming) {
+        Map<String, CatalogItem> unique = new LinkedHashMap<>();
+        for (CatalogItem item : currentItems) unique.put(item.pageUrl, item);
+        for (CatalogItem item : incoming) unique.put(item.pageUrl, item);
+        currentItems.clear();
+        currentItems.addAll(unique.values());
+    }
+
+    private boolean isNetworkFailure(CatalogClient.Failure failure) {
+        return failure.type == CatalogClient.FailureType.NETWORK ||
+                failure.type == CatalogClient.FailureType.TIMEOUT;
+    }
+
+    private void focusFirstCard() {
+        if (!television) return;
+        grid.postDelayed(() -> {
+            RecyclerView.ViewHolder holder = grid.findViewHolderForAdapterPosition(0);
+            if (holder != null) holder.itemView.requestFocus();
+            else grid.requestFocus();
+        }, 250);
+    }
+
     private boolean isCurrentRequest(int generation) {
         return generation == requestGeneration && !isFinishing() && !isDestroyed();
     }
 
     private void showLoadError(String url, String title, String message) {
         progress.setVisibility(View.GONE);
+        paginationProgress.setVisibility(View.GONE);
+        paginationRetry.setVisibility(View.GONE);
         grid.setVisibility(View.GONE);
         stateView.showAction(message, getString(R.string.retry), view -> loadPage(url, title));
     }
@@ -294,6 +432,7 @@ public class MainActivity extends Activity {
     protected void onDestroy() {
         requestGeneration++;
         if (client != null) client.destroy();
+        if (catalogCache != null) catalogCache.destroy();
         if (updateManager != null) updateManager.destroy();
         super.onDestroy();
     }

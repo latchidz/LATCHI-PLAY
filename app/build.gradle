@@ -10,8 +10,8 @@ android {
         applicationId 'com.latchi.play'
         minSdk 23
         targetSdk 35
-        versionCode 6
-        versionName '3.0.0'
+        versionCode 7
+        versionName '3.1.0'
     }
 
     def keystorePath = System.getenv('CM_KEYSTORE_PATH')

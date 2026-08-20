@@ -120,7 +120,7 @@ public class MainActivity extends Activity {
         grid.setPadding(dp(television ? 24 : 4), dp(television ? 16 : 5), dp(television ? 24 : 4), dp(24));
         grid.setItemAnimator(null);
         grid.setDescendantFocusability(android.view.ViewGroup.FOCUS_AFTER_DESCENDANTS);
-        int columns = television ? 6 : 2;
+        int columns = television ? 5 : 3;
         grid.setLayoutManager(new GridLayoutManager(this, columns));
         adapter = new PosterAdapter(television, this::openDetails);
         grid.setAdapter(adapter);
@@ -152,8 +152,8 @@ public class MainActivity extends Activity {
                     emptyView.setVisibility(View.VISIBLE);
                     emptyView.setText("تعذّر تحميل المحتوى\nاضغط لإعادة المحاولة");
                     emptyView.setOnClickListener(v -> loadPage(url, title));
-                    emptyView.setFocusable(true);
-                    emptyView.requestFocus();
+                    emptyView.setFocusable(television);
+                    if (television) emptyView.requestFocus();
                 });
             }
         });
@@ -216,12 +216,15 @@ public class MainActivity extends Activity {
         button.setTextColor(Color.WHITE);
         button.setTextSize(television ? 16 : 13);
         button.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-        button.setFocusable(true);
+        button.setFocusable(television);
+        button.setFocusableInTouchMode(television);
         button.setBackground(pill(Color.rgb(29, 24, 40), dp(14), Color.rgb(75, 58, 96)));
-        button.setOnFocusChangeListener((v, focused) -> {
-            v.setBackground(pill(focused ? PURPLE : Color.rgb(29, 24, 40), dp(14), focused ? GOLD : Color.rgb(75, 58, 96)));
-            v.animate().scaleX(focused ? 1.06f : 1f).scaleY(focused ? 1.06f : 1f).setDuration(120).start();
-        });
+        if (television) {
+            button.setOnFocusChangeListener((v, focused) -> {
+                v.setBackground(pill(focused ? PURPLE : Color.rgb(29, 24, 40), dp(14), focused ? GOLD : Color.rgb(75, 58, 96)));
+                v.animate().scaleX(focused ? 1.06f : 1f).scaleY(focused ? 1.06f : 1f).setDuration(120).start();
+            });
+        }
         button.setOnClickListener(listener);
         LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, -1, 1);
         p.setMargins(dp(4), 0, dp(4), 0);
@@ -231,7 +234,7 @@ public class MainActivity extends Activity {
     private Button actionButton(String label) {
         Button b = new Button(this); b.setText(label); b.setAllCaps(false); b.setTextColor(Color.WHITE);
         b.setTextSize(television ? 15 : 12); b.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-        b.setBackground(pill(PURPLE, dp(14), GOLD)); b.setFocusable(true); return b;
+        b.setBackground(pill(PURPLE, dp(14), GOLD)); b.setFocusable(television); b.setFocusableInTouchMode(television); return b;
     }
 
     private TextView text(String value, int size, int color, boolean bold) {

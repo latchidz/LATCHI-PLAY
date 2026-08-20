@@ -56,9 +56,6 @@ public class DetailActivity extends Activity {
         info.addView(badge, new LinearLayout.LayoutParams(-1, -2));
         TextView title = text(item.title, television ? 34 : 25, Color.WHITE, true); title.setGravity(Gravity.RIGHT); title.setPadding(0, dp(10), 0, dp(18));
         info.addView(title, new LinearLayout.LayoutParams(-1, -2));
-        TextView description = text("شاهد المحتوى داخل LATCHI PLAY بواجهة مهيأة للهاتف والتلفاز.", television ? 17 : 15, Color.rgb(188, 180, 198), false);
-        description.setGravity(Gravity.RIGHT); description.setLineSpacing(0, 1.4f); info.addView(description, new LinearLayout.LayoutParams(-1, -2));
-
         Button watch = button("▶  مشاهدة الآن", PURPLE); watch.setOnClickListener(v -> {
             Intent intent = new Intent(this, WatchActivity.class); intent.putExtra("url", item.pageUrl); intent.putExtra("title", item.title); startActivity(intent);
         });
@@ -78,8 +75,8 @@ public class DetailActivity extends Activity {
 
     private Button button(String label, int color) {
         Button b = new Button(this); b.setText(label); b.setAllCaps(false); b.setTextColor(Color.WHITE); b.setTextSize(television ? 17 : 15);
-        b.setTypeface(android.graphics.Typeface.DEFAULT_BOLD); b.setFocusable(true); b.setBackground(round(color, dp(15), GOLD));
-        b.setOnFocusChangeListener((v, focused) -> v.animate().scaleX(focused ? 1.06f : 1f).scaleY(focused ? 1.06f : 1f).setDuration(120).start()); return b;
+        b.setTypeface(android.graphics.Typeface.DEFAULT_BOLD); b.setFocusable(television); b.setFocusableInTouchMode(television); b.setBackground(round(color, dp(15), GOLD));
+        if (television) b.setOnFocusChangeListener((v, focused) -> v.animate().scaleX(focused ? 1.06f : 1f).scaleY(focused ? 1.06f : 1f).setDuration(120).start()); return b;
     }
     private TextView text(String s, int size, int color, boolean bold) { TextView v = new TextView(this); v.setText(s); v.setTextSize(size); v.setTextColor(color); if (bold) v.setTypeface(android.graphics.Typeface.DEFAULT_BOLD); return v; }
     private GradientDrawable round(int color, int radius, int stroke) { GradientDrawable d = new GradientDrawable(); d.setColor(color); d.setCornerRadius(radius); d.setStroke(dp(1), stroke); return d; }

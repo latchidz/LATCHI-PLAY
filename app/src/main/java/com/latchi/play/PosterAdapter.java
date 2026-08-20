@@ -47,17 +47,17 @@ public final class PosterAdapter extends RecyclerView.Adapter<PosterAdapter.Hold
     @Override
     public Holder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
         Context context = parent.getContext();
-        int cardHeight = dp(context, television ? 310 : 274);
+        int cardHeight = dp(context, television ? 350 : 248);
         LinearLayout card = new LinearLayout(context);
         card.setOrientation(LinearLayout.VERTICAL);
-        card.setFocusable(true);
-        card.setFocusableInTouchMode(true);
+        card.setFocusable(television);
+        card.setFocusableInTouchMode(television);
         card.setClickable(true);
         card.setClipToOutline(true);
         card.setBackground(cardBackground(false));
         card.setPadding(dp(context, 2), dp(context, 2), dp(context, 2), dp(context, 2));
         RecyclerView.LayoutParams rootParams = new RecyclerView.LayoutParams(-1, cardHeight);
-        int margin = dp(context, television ? 9 : 5);
+        int margin = dp(context, television ? 12 : 5);
         rootParams.setMargins(margin, margin, margin, margin);
         card.setLayoutParams(rootParams);
 
@@ -83,19 +83,21 @@ public final class PosterAdapter extends RecyclerView.Adapter<PosterAdapter.Hold
         title.setTextSize(television ? 15 : 13);
         title.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
         title.setGravity(Gravity.CENTER_VERTICAL | Gravity.RIGHT);
-        title.setMaxLines(2);
+        title.setMaxLines(3);
         title.setEllipsize(android.text.TextUtils.TruncateAt.END);
         title.setPadding(dp(context, 10), dp(context, 7), dp(context, 10), dp(context, 7));
-        card.addView(title, new LinearLayout.LayoutParams(-1, dp(context, television ? 58 : 54)));
+        card.addView(title, new LinearLayout.LayoutParams(-1, dp(context, television ? 72 : 66)));
 
         Holder holder = new Holder(card, poster, title, badge);
-        card.setOnFocusChangeListener((view, focused) -> {
-            view.setBackground(cardBackground(focused));
-            float scale = focused ? 1.07f : 1f;
-            view.animate().scaleX(scale).scaleY(scale).translationZ(focused ? dp(context, 12) : 0)
-                    .setDuration(160).setInterpolator(new DecelerateInterpolator()).start();
-            if (focused) view.bringToFront();
-        });
+        if (television) {
+            card.setOnFocusChangeListener((view, focused) -> {
+                view.setBackground(cardBackground(focused));
+                float scale = focused ? 1.07f : 1f;
+                view.animate().scaleX(scale).scaleY(scale).translationZ(focused ? dp(context, 12) : 0)
+                        .setDuration(160).setInterpolator(new DecelerateInterpolator()).start();
+                if (focused) view.bringToFront();
+            });
+        }
         return holder;
     }
 
@@ -103,10 +105,17 @@ public final class PosterAdapter extends RecyclerView.Adapter<PosterAdapter.Hold
     public void onBindViewHolder(@NonNull Holder holder, int position) {
         CatalogItem item = items.get(position);
         holder.title.setText(item.title);
-        holder.badge.setText(item.type.equals("movie") ? "فيلم" : item.type.equals("series") ? "مسلسل" : "حلقة");
+        holder.badge.setText(badgeText(item));
         Glide.with(holder.poster).load(item.imageUrl).diskCacheStrategy(DiskCacheStrategy.ALL)
                 .placeholder(android.R.color.darker_gray).centerCrop().into(holder.poster);
         holder.itemView.setOnClickListener(v -> listener.onOpen(item));
+    }
+
+    private String badgeText(CatalogItem item) {
+        if (item.type.equals("movie")) return "فيلم";
+        if (item.type.equals("series")) return "مسلسل";
+        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("الحلقة\\s*(\\d+)").matcher(item.title);
+        return matcher.find() ? "حلقة " + matcher.group(1) : "حلقة";
     }
 
     static final class Holder extends RecyclerView.ViewHolder {

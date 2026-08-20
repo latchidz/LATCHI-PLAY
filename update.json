@@ -1,6 +1,6 @@
 {
-  "version": "3.0.0",
-  "version_code": 6,
-  "apk_url": "https://github.com/latchidz/LATCHI-PLAY/releases/download/v3.0.0/LATCHI-PLAY-3.0.0-release.apk",
-  "notes": "كتالوج أصلي جديد من LATCHI PLAY، تصميم هاتف وتلفاز، تنقل بالريموت، تفاصيل أصلية، وتجربة مشاهدة معزولة."
+  "version": "3.1.0",
+  "version_code": 7,
+  "apk_url": "https://github.com/latchidz/LATCHI-PLAY/releases/download/v3.1.0/LATCHI-PLAY-3.1.0-release.apk",
+  "notes": "Splash متحرك للهاتف والتلفاز، أيقونة جديدة، احترام Notch، Focus للتلفاز فقط، و3 بطاقات للهاتف و5 للتلفاز."
 }

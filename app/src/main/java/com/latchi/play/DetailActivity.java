@@ -16,13 +16,17 @@ import android.widget.TextView;
 
 import com.bumptech.glide.Glide;
 
+import java.util.List;
+
 public class DetailActivity extends Activity {
     private static final int BG = Color.rgb(7, 6, 12);
     private static final int GOLD = Color.rgb(246, 198, 75);
     private static final int PURPLE = Color.rgb(124, 58, 237);
     private CatalogItem item;
     private CatalogItem nextItem;
+    private CatalogItem firstEpisode;
     private FavoritesStore favoritesStore;
+    private SeriesEpisodesPanel episodesPanel;
     private boolean television;
 
     @Override protected void onCreate(Bundle state) {
@@ -65,21 +69,16 @@ public class DetailActivity extends Activity {
         TextView title = text(item.title, television ? 34 : 25, Color.WHITE, true); title.setGravity(Gravity.RIGHT); title.setPadding(0, dp(10), 0, dp(18));
         info.addView(title, new LinearLayout.LayoutParams(-1, -2));
         boolean seriesItem = "series".equals(item.type);
-        Button watch = button(getString(seriesItem ? R.string.view_episodes : R.string.watch_now), PURPLE);
-        watch.setOnClickListener(view -> {
-            if (seriesItem) {
-                Intent intent = new Intent(this, SeriesEpisodesActivity.class);
-                intent.putExtra("item", item);
-                startActivity(intent);
-            } else {
-                Intent intent = new Intent(this, WatchActivity.class);
-                intent.putExtra("url", item.pageUrl);
-                intent.putExtra("title", item.title);
-                intent.putExtra("item", item);
-                if (nextItem != null) intent.putExtra("next_item", nextItem);
-                startActivity(intent);
-            }
-        });
+        Button watch = button(getString(seriesItem ? R.string.play_first_episode : R.string.watch_now), PURPLE);
+        if (seriesItem) {
+            watch.setEnabled(false);
+            watch.setAlpha(.55f);
+            watch.setOnClickListener(view -> {
+                if (firstEpisode != null) openEpisode(firstEpisode, null);
+            });
+        } else {
+            watch.setOnClickListener(view -> openEpisode(item, nextItem));
+        }
         LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(television ? dp(280) : -1, dp(television ? 64 : 56)); bp.setMargins(0, dp(28), 0, dp(10)); info.addView(watch, bp);
 
         Button favorite = button(favoriteLabel(favoritesStore.isFavorite(item)), Color.rgb(34, 28, 45));
@@ -91,7 +90,57 @@ public class DetailActivity extends Activity {
 
         Button back = button(getString(R.string.back), Color.rgb(24, 20, 32)); back.setOnClickListener(v -> finish());
         LinearLayout.LayoutParams backParams = new LinearLayout.LayoutParams(television ? dp(180) : -1, dp(television ? 54 : 48)); backParams.setMargins(0, dp(10), 0, 0); info.addView(back, backParams);
-        if (television) watch.requestFocus();
+
+        if (seriesItem) {
+            episodesPanel = new SeriesEpisodesPanel(this, television, item,
+                    new SeriesEpisodesPanel.Listener() {
+                        @Override
+                        public void onReady(List<CatalogItem> episodes) {
+                            firstEpisode = null;
+                            for (CatalogItem episode : episodes) {
+                                if (firstEpisode == null || compareEpisodes(episode, firstEpisode) < 0) {
+                                    firstEpisode = episode;
+                                }
+                            }
+                            if (firstEpisode != null) {
+                                watch.setEnabled(true);
+                                watch.setAlpha(1f);
+                                if (television) watch.requestFocus();
+                            }
+                        }
+
+                        @Override
+                        public void onEpisodeSelected(CatalogItem episode, CatalogItem nextEpisode) {
+                            openEpisode(episode, nextEpisode);
+                        }
+                    });
+            info.addView(episodesPanel, new LinearLayout.LayoutParams(-1, -2));
+            episodesPanel.load();
+        }
+        if (television && !seriesItem) watch.requestFocus();
+    }
+
+    private int compareEpisodes(CatalogItem left, CatalogItem right) {
+        int seasonCompare = Integer.compare(Math.max(1, left.seasonNumber), Math.max(1, right.seasonNumber));
+        if (seasonCompare != 0) return seasonCompare;
+        int leftEpisode = left.episodeNumber > 0 ? left.episodeNumber : Integer.MAX_VALUE;
+        int rightEpisode = right.episodeNumber > 0 ? right.episodeNumber : Integer.MAX_VALUE;
+        return Integer.compare(leftEpisode, rightEpisode);
+    }
+
+    private void openEpisode(CatalogItem episode, CatalogItem nextEpisode) {
+        Intent intent = new Intent(this, WatchActivity.class);
+        intent.putExtra("url", episode.pageUrl);
+        intent.putExtra("title", episode.title);
+        intent.putExtra("item", episode);
+        if (nextEpisode != null) intent.putExtra("next_item", nextEpisode);
+        startActivity(intent);
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (episodesPanel != null) episodesPanel.destroy();
+        super.onDestroy();
     }
 
     private String favoriteLabel(boolean favorite) {

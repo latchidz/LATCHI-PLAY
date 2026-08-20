@@ -39,15 +39,18 @@ public class WatchActivity extends Activity {
             "(function(){document.cookie='sb_seen=1;path=/;max-age=31536000';" +
             "var st=document.createElement('style');st.textContent='" +
             "#headerNav,body>footer,.footer,#sbOverlay,.sbBox,.sbPopup,.singleInfo,.sec-line,.share-button-wrapper{display:none!important}" +
-            "html,body,main,.secContainer,.containers{margin:0!important;padding:0!important;background:#000!important;width:100%!important;min-height:100%!important}" +
-            ".getEmbed,.watch{margin:0!important;padding:0!important;width:100%!important;min-height:calc(100vh - 4px)!important;background:#000!important}" +
-            ".getEmbed iframe,.watch iframe,.watch video{width:100%!important;min-height:80vh!important;border:0!important}';" +
+            "html,body,main,.secContainer,.containers{margin:0!important;padding:0!important;background:#000!important;width:100%!important;height:100%!important;overflow:hidden!important}" +
+            ".secContainer.bg{position:fixed!important;inset:0!important;z-index:999999!important}" +
+            ".getEmbed,.watch{margin:0!important;padding:0!important;width:100%!important;height:100vh!important;background:#000!important}" +
+            ".getEmbed iframe,.watch iframe,.watch video{width:100%!important;height:100vh!important;min-height:100vh!important;border:0!important}';" +
             "document.documentElement.appendChild(st);" +
             "var p=document.getElementById('sbOverlay');if(p)p.remove();" +
-            "document.querySelectorAll('a[target=\"_blank\"]').forEach(function(a){a.target='_self'});})();";
+            "document.querySelectorAll('a[target=\"_blank\"]').forEach(function(a){a.target='_self'});" +
+            "var f=document.querySelector('.getEmbed iframe,.watch iframe');if(f){f.setAttribute('allow','autoplay; fullscreen; picture-in-picture');f.focus();}})();";
 
     private FrameLayout root;
     private LinearLayout chrome;
+    private LinearLayout topBar;
     private PlayerView playerView;
     private PlaybackController playbackController;
     private ServerResolver serverResolver;
@@ -109,11 +112,11 @@ public class WatchActivity extends Activity {
         chrome.setOrientation(LinearLayout.VERTICAL);
         root.addView(chrome, match());
 
-        LinearLayout bar = new LinearLayout(this);
-        bar.setGravity(Gravity.CENTER_VERTICAL);
-        bar.setPadding(dp(10), dp(4), dp(12), dp(4));
-        bar.setBackgroundColor(Color.rgb(13, 10, 18));
-        chrome.addView(bar, new LinearLayout.LayoutParams(-1, dp(50)));
+        topBar = new LinearLayout(this);
+        topBar.setGravity(Gravity.CENTER_VERTICAL);
+        topBar.setPadding(dp(10), dp(4), dp(12), dp(4));
+        topBar.setBackgroundColor(Color.rgb(13, 10, 18));
+        chrome.addView(topBar, new LinearLayout.LayoutParams(-1, dp(50)));
 
         Button back = new Button(this);
         back.setText(R.string.back);
@@ -122,7 +125,7 @@ public class WatchActivity extends Activity {
         back.setBackgroundColor(Color.TRANSPARENT);
         back.setFocusable(television);
         back.setOnClickListener(view -> onBackPressed());
-        bar.addView(back, new LinearLayout.LayoutParams(dp(90), -1));
+        topBar.addView(back, new LinearLayout.LayoutParams(dp(90), -1));
 
         TextView title = new TextView(this);
         title.setText(getIntent().getStringExtra("title"));
@@ -131,7 +134,7 @@ public class WatchActivity extends Activity {
         title.setGravity(Gravity.CENTER_VERTICAL | Gravity.RIGHT);
         title.setMaxLines(1);
         title.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        bar.addView(title, new LinearLayout.LayoutParams(0, -1, 1));
+        topBar.addView(title, new LinearLayout.LayoutParams(0, -1, 1));
 
         TextView brand = new TextView(this);
         brand.setText(R.string.app_name);
@@ -139,7 +142,7 @@ public class WatchActivity extends Activity {
         brand.setTextSize(14);
         brand.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
         brand.setGravity(Gravity.CENTER);
-        bar.addView(brand, new LinearLayout.LayoutParams(dp(130), -1));
+        topBar.addView(brand, new LinearLayout.LayoutParams(dp(130), -1));
 
         progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         progress.setIndeterminate(true);
@@ -204,6 +207,8 @@ public class WatchActivity extends Activity {
                 stateView.hide();
                 webView.setVisibility(View.VISIBLE);
                 view.evaluateJavascript(CLEAN_PLAYER_JS, null);
+                topBar.setVisibility(View.GONE);
+                immersive(true);
             }
 
             @Override
@@ -323,6 +328,7 @@ public class WatchActivity extends Activity {
                         progress.setVisibility(View.GONE);
                         stateView.hide();
                         playerView.setVisibility(View.VISIBLE);
+                        topBar.setVisibility(View.GONE);
                         immersive(true);
                         if (DeviceUtils.isTelevision(WatchActivity.this)) playerView.requestFocus();
                     }
@@ -352,6 +358,7 @@ public class WatchActivity extends Activity {
         nativePlayback = false;
         webFallbackActive = true;
         immersive(false);
+        topBar.setVisibility(View.VISIBLE);
         playerView.setVisibility(View.GONE);
         if (playbackController.isActive()) playbackController.release();
         if (!DeviceUtils.hasInternetConnection(this)) {
@@ -367,6 +374,8 @@ public class WatchActivity extends Activity {
 
     private void showWatchError() {
         mainFrameFailed = true;
+        immersive(false);
+        topBar.setVisibility(View.VISIBLE);
         progress.setVisibility(View.GONE);
         webView.setVisibility(View.GONE);
         String message = DeviceUtils.hasInternetConnection(this)

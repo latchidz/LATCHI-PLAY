@@ -15,6 +15,7 @@
     <string name="trying_next_server">جارٍ تجربة سيرفر آخر…</string>
     <string name="no_internet">لا يوجد اتصال بالإنترنت\nتحقق من الاتصال وحاول مرة أخرى</string>
     <string name="retry">إعادة المحاولة</string>
+    <string name="load_more">تحميل المزيد</string>
     <string name="retry_more">إعادة تحميل المزيد</string>
     <string name="loading_more">جارٍ تحميل المزيد…</string>
     <string name="offline_title">%1$s • دون اتصال</string>
@@ -31,6 +32,9 @@
     <string name="cancel">إلغاء</string>
     <string name="watch_now">▶  مشاهدة الآن</string>
     <string name="view_episodes">عرض المواسم والحلقات</string>
+    <string name="play_first_episode">تشغيل الحلقة الأولى</string>
+    <string name="seasons_and_episodes">المواسم والحلقات</string>
+    <string name="episode_number">الحلقة %1$d</string>
     <string name="loading_episodes">جارٍ تحميل الحلقات…</string>
     <string name="no_episodes">لا توجد حلقات متاحة حاليًا</string>
     <string name="season_number">الموسم %1$d</string>

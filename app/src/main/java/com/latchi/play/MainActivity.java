@@ -142,7 +142,7 @@ public class MainActivity extends Activity {
 
         grid = new RecyclerView(this);
         grid.setClipToPadding(false);
-        grid.setPadding(dp(television ? 24 : 4), dp(television ? 16 : 5), dp(television ? 24 : 4), dp(24));
+        grid.setPadding(dp(television ? 24 : 4), dp(television ? 16 : 5), dp(television ? 24 : 4), dp(82));
         grid.setItemAnimator(null);
         grid.setDescendantFocusability(android.view.ViewGroup.FOCUS_AFTER_DESCENDANTS);
         int columns = DeviceUtils.catalogColumns(this, television);
@@ -164,7 +164,7 @@ public class MainActivity extends Activity {
         progressParams.bottomMargin = dp(12);
         content.addView(paginationProgress, progressParams);
 
-        paginationRetry = actionButton(getString(R.string.retry_more));
+        paginationRetry = actionButton(getString(R.string.load_more));
         paginationRetry.setVisibility(View.GONE);
         paginationRetry.setOnClickListener(view -> loadNextPage());
         FrameLayout.LayoutParams retryParams = new FrameLayout.LayoutParams(
@@ -213,6 +213,7 @@ public class MainActivity extends Activity {
                 adapter.submit(currentItems);
                 stateView.hide();
                 grid.setVisibility(View.VISIBLE);
+                updatePaginationControl();
             }
 
             if (!DeviceUtils.hasInternetConnection(this)) {
@@ -253,6 +254,7 @@ public class MainActivity extends Activity {
                     grid.setVisibility(View.VISIBLE);
                     adapter.submit(currentItems);
                     catalogCache.write(url, currentItems, nextPageUrl);
+                    updatePaginationControl();
                     focusFirstCard();
                 });
             }
@@ -280,6 +282,7 @@ public class MainActivity extends Activity {
         if (loading || loadingNext || nextPageUrl == null || activeUrl == null) return;
         if (!DeviceUtils.hasInternetConnection(this)) {
             screenTitle.setText(getString(R.string.offline_title, activeTitle));
+            paginationRetry.setText(R.string.retry_more);
             paginationRetry.setVisibility(View.VISIBLE);
             return;
         }
@@ -301,6 +304,7 @@ public class MainActivity extends Activity {
                     nextPageUrl = requestedPage.equals(page.nextPageUrl) ? null : page.nextPageUrl;
                     adapter.submit(currentItems);
                     catalogCache.write(activeUrl, currentItems, nextPageUrl);
+                    updatePaginationControl();
                 });
             }
 
@@ -310,10 +314,21 @@ public class MainActivity extends Activity {
                     if (!isCurrentRequest(generation)) return;
                     loadingNext = false;
                     paginationProgress.setVisibility(View.GONE);
+                    paginationRetry.setText(R.string.retry_more);
                     paginationRetry.setVisibility(View.VISIBLE);
                 });
             }
         });
+    }
+
+    private void updatePaginationControl() {
+        paginationProgress.setVisibility(View.GONE);
+        if (nextPageUrl == null) {
+            paginationRetry.setVisibility(View.GONE);
+        } else {
+            paginationRetry.setText(R.string.load_more);
+            paginationRetry.setVisibility(View.VISIBLE);
+        }
     }
 
     private void mergeItems(List<CatalogItem> incoming) {

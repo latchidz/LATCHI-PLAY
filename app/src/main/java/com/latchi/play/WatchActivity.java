@@ -27,6 +27,10 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.media3.ui.PlayerView;
+
+import java.util.Collections;
+
 public class WatchActivity extends Activity {
     private static final String ALLOWED_HOST = "shooflive.net";
     private static final String CLEAN_PLAYER_JS =
@@ -42,12 +46,18 @@ public class WatchActivity extends Activity {
 
     private FrameLayout root;
     private LinearLayout chrome;
+    private PlayerView playerView;
+    private PlaybackController playbackController;
     private WebView webView;
     private ProgressBar progress;
     private ContentStateView stateView;
     private View customView;
     private WebChromeClient.CustomViewCallback customCallback;
     private String currentUrl;
+    private String directUrl;
+    private String directType;
+    private boolean nativePlayback;
+    private boolean nativeReady;
     private boolean mainFrameFailed;
 
     @Override
@@ -58,11 +68,14 @@ public class WatchActivity extends Activity {
         configureWebView();
 
         currentUrl = getIntent().getStringExtra("url");
+        directUrl = getIntent().getStringExtra("direct_url");
+        directType = getIntent().getStringExtra("direct_type");
         if (!isAllowedUrl(currentUrl)) {
             finish();
             return;
         }
-        loadWatchPage();
+        if (isDirectMediaUrl(directUrl)) startNativePlayback();
+        else loadWatchPage();
     }
 
     private void buildUi() {
@@ -114,6 +127,14 @@ public class WatchActivity extends Activity {
 
         FrameLayout content = new FrameLayout(this);
         chrome.addView(content, new LinearLayout.LayoutParams(-1, 0, 1));
+
+        playerView = new PlayerView(this);
+        playerView.setBackgroundColor(Color.BLACK);
+        playerView.setKeepScreenOn(true);
+        playerView.setVisibility(View.GONE);
+        playerView.setFocusable(television);
+        content.addView(playerView, new FrameLayout.LayoutParams(-1, -1));
+        playbackController = new PlaybackController(this, playerView);
 
         webView = new WebView(this);
         webView.setBackgroundColor(Color.BLACK);
@@ -212,7 +233,55 @@ public class WatchActivity extends Activity {
         });
     }
 
+    private void startNativePlayback() {
+        nativePlayback = true;
+        nativeReady = false;
+        webView.stopLoading();
+        webView.setVisibility(View.GONE);
+        playerView.setVisibility(View.GONE);
+        progress.setVisibility(View.VISIBLE);
+        stateView.showMessage(getString(R.string.preparing_watch));
+
+        playbackController.prepare(currentUrl, directUrl, directType, Collections.emptyMap(),
+                new PlaybackController.Callback() {
+                    @Override
+                    public void onBuffering() {
+                        progress.setVisibility(View.VISIBLE);
+                        if (!nativeReady) stateView.showMessage(getString(R.string.preparing_watch));
+                    }
+
+                    @Override
+                    public void onReady() {
+                        nativeReady = true;
+                        progress.setVisibility(View.GONE);
+                        stateView.hide();
+                        playerView.setVisibility(View.VISIBLE);
+                        immersive(true);
+                        if (DeviceUtils.isTelevision(WatchActivity.this)) playerView.requestFocus();
+                    }
+
+                    @Override
+                    public void onEnded() {
+                        progress.setVisibility(View.GONE);
+                        playerView.showController();
+                    }
+
+                    @Override
+                    public void onError() {
+                        nativeReady = false;
+                        progress.setVisibility(View.GONE);
+                        playerView.setVisibility(View.GONE);
+                        stateView.showAction(getString(R.string.playback_failed),
+                                getString(R.string.retry), view -> startNativePlayback());
+                    }
+                });
+    }
+
     private void loadWatchPage() {
+        nativePlayback = false;
+        immersive(false);
+        playerView.setVisibility(View.GONE);
+        if (playbackController.isActive()) playbackController.release();
         if (!DeviceUtils.hasInternetConnection(this)) {
             showWatchError();
             return;
@@ -232,6 +301,14 @@ public class WatchActivity extends Activity {
                 ? getString(R.string.load_watch_failed)
                 : getString(R.string.no_internet);
         stateView.showAction(message, getString(R.string.retry), view -> loadWatchPage());
+    }
+
+    private boolean isDirectMediaUrl(String value) {
+        if (value == null) return false;
+        Uri uri = Uri.parse(value);
+        if (!"https".equalsIgnoreCase(uri.getScheme()) || uri.getHost() == null) return false;
+        String path = uri.getPath() == null ? "" : uri.getPath().toLowerCase();
+        return path.endsWith(".m3u8") || path.endsWith(".mp4") || path.endsWith(".mpd");
     }
 
     private boolean isAllowedUrl(String value) {
@@ -270,6 +347,7 @@ public class WatchActivity extends Activity {
     @Override
     public void onBackPressed() {
         if (customView != null) hideCustomView();
+        else if (nativePlayback) finish();
         else if (webView.canGoBack()) webView.goBack();
         else finish();
     }
@@ -277,17 +355,21 @@ public class WatchActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
-        if (webView != null) webView.onResume();
+        if (nativePlayback && playbackController != null) playbackController.resume();
+        else if (webView != null) webView.onResume();
     }
 
     @Override
     protected void onPause() {
-        if (webView != null) webView.onPause();
+        if (nativePlayback && playbackController != null) playbackController.pause();
+        else if (webView != null) webView.onPause();
         super.onPause();
     }
 
     @Override
     protected void onDestroy() {
+        immersive(false);
+        if (playbackController != null) playbackController.release();
         if (customView != null) hideCustomView();
         if (webView != null) {
             webView.stopLoading();

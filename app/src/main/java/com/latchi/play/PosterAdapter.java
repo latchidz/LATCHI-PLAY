@@ -144,6 +144,7 @@ public final class PosterAdapter extends RecyclerView.Adapter<PosterAdapter.Hold
     private String badgeText(CatalogItem item) {
         if (item.type.equals("movie")) return "فيلم";
         if (item.type.equals("series")) return "مسلسل";
+        if (item.episodeNumber > 0) return "حلقة " + item.episodeNumber;
         java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("الحلقة\\s*(\\d+)").matcher(item.title);
         return matcher.find() ? "حلقة " + matcher.group(1) : "حلقة";
     }

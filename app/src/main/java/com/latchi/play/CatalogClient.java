@@ -12,6 +12,7 @@ import java.net.URL;
 import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -67,6 +68,8 @@ public final class CatalogClient {
     private static final Pattern NEXT_LINK = Pattern.compile(
             "<a\\s+[^>]*href=[\\\"']([^\\\"']+)[\\\"'][^>]*>(.*?)</a>",
             Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+    private static final Pattern SEASON_NUMBER = Pattern.compile("الموسم\\s*(\\d+)");
+    private static final Pattern EPISODE_NUMBER = Pattern.compile("الحلقة\\s*(\\d+)");
 
     private final ExecutorService executor = Executors.newFixedThreadPool(2);
     private final AtomicBoolean destroyed = new AtomicBoolean(false);
@@ -171,9 +174,22 @@ public final class CatalogClient {
 
             String type = url.contains("/movies/") ? "movie" :
                     url.contains("/series/") ? "series" : "episode";
-            result.add(new CatalogItem(title, image, url, type));
+            int seasonNumber = type.equals("episode") ? numberFrom(SEASON_NUMBER, title, 1) : 0;
+            int episodeNumber = type.equals("episode") ? numberFrom(EPISODE_NUMBER, title, 0) : 0;
+            result.add(new CatalogItem(title, image, url, type, seasonNumber, episodeNumber,
+                    Collections.emptyMap()));
         }
         return result;
+    }
+
+    private int numberFrom(Pattern pattern, String title, int fallback) {
+        Matcher matcher = pattern.matcher(title);
+        if (!matcher.find()) return fallback;
+        try {
+            return Integer.parseInt(matcher.group(1));
+        } catch (NumberFormatException error) {
+            return fallback;
+        }
     }
 
     private String findNextPageUrl(String html) {

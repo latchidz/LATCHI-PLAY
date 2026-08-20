@@ -23,5 +23,12 @@
     <string name="removed_from_favorites">تمت الإزالة من المفضلة</string>
     <string name="remove">إزالة</string>
     <string name="cancel">إلغاء</string>
+    <string name="watch_now">▶  مشاهدة الآن</string>
+    <string name="view_episodes">عرض المواسم والحلقات</string>
+    <string name="loading_episodes">جارٍ تحميل الحلقات…</string>
+    <string name="no_episodes">لا توجد حلقات متاحة حاليًا</string>
+    <string name="season_number">الموسم %1$d</string>
+    <string name="next_episode_available">انتهت الحلقة</string>
+    <string name="play_next_episode">تشغيل الحلقة التالية</string>
     <string name="external_window_blocked">تم منع نافذة خارجية</string>
 </resources>

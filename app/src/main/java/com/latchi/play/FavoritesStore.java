@@ -83,7 +83,10 @@ public final class FavoritesStore {
                         title,
                         object.optString("image_url", ""),
                         pageUrl,
-                        object.optString("type", "movie")
+                        object.optString("type", "movie"),
+                        object.optInt("season_number", 0),
+                        object.optInt("episode_number", 0),
+                        java.util.Collections.emptyMap()
                 ));
             }
         } catch (Exception ignored) {
@@ -101,6 +104,8 @@ public final class FavoritesStore {
                 object.put("image_url", item.imageUrl);
                 object.put("page_url", item.pageUrl);
                 object.put("type", item.type);
+                object.put("season_number", item.seasonNumber);
+                object.put("episode_number", item.episodeNumber);
                 array.put(object);
             } catch (Exception ignored) {
                 // Skip only the malformed item; keep the rest of the favorites.

@@ -1,6 +1,7 @@
 package com.latchi.play;
 
 import android.app.Activity;
+import android.content.Intent;
 import android.content.pm.ActivityInfo;
 import android.graphics.Bitmap;
 import android.graphics.Color;
@@ -56,6 +57,8 @@ public class WatchActivity extends Activity {
     private View customView;
     private WebChromeClient.CustomViewCallback customCallback;
     private String currentUrl;
+    private CatalogItem currentItem;
+    private CatalogItem nextItem;
     private List<PlaybackSource> resolvedSources = Collections.emptyList();
     private int sourceIndex;
     private int resolverGeneration;
@@ -73,6 +76,8 @@ public class WatchActivity extends Activity {
         serverResolver = new ServerResolver();
 
         currentUrl = getIntent().getStringExtra("url");
+        currentItem = (CatalogItem) getIntent().getSerializableExtra("item");
+        nextItem = (CatalogItem) getIntent().getSerializableExtra("next_item");
         if (!isAllowedUrl(currentUrl)) {
             finish();
             return;
@@ -323,6 +328,10 @@ public class WatchActivity extends Activity {
                     public void onEnded() {
                         progress.setVisibility(View.GONE);
                         playerView.showController();
+                        if (nextItem != null) {
+                            stateView.showAction(getString(R.string.next_episode_available),
+                                    getString(R.string.play_next_episode), view -> openNextEpisode());
+                        }
                     }
 
                     @Override
@@ -363,6 +372,16 @@ public class WatchActivity extends Activity {
             if (webFallbackActive) loadWatchPage();
             else resolveAndPreparePlayback();
         });
+    }
+
+    private void openNextEpisode() {
+        if (nextItem == null) return;
+        Intent intent = new Intent(this, WatchActivity.class);
+        intent.putExtra("url", nextItem.pageUrl);
+        intent.putExtra("title", nextItem.title);
+        intent.putExtra("item", nextItem);
+        startActivity(intent);
+        finish();
     }
 
     private boolean isDirectMediaUrl(String value) {

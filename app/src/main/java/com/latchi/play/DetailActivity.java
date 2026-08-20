@@ -21,6 +21,7 @@ public class DetailActivity extends Activity {
     private static final int GOLD = Color.rgb(246, 198, 75);
     private static final int PURPLE = Color.rgb(124, 58, 237);
     private CatalogItem item;
+    private CatalogItem nextItem;
     private FavoritesStore favoritesStore;
     private boolean television;
 
@@ -30,6 +31,7 @@ public class DetailActivity extends Activity {
         setRequestedOrientation(television ? ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE : ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
         getWindow().setStatusBarColor(BG); getWindow().setNavigationBarColor(BG);
         item = (CatalogItem) getIntent().getSerializableExtra("item");
+        nextItem = (CatalogItem) getIntent().getSerializableExtra("next_item");
         if (item == null) { finish(); return; }
         favoritesStore = new FavoritesStore(this);
         buildUi();
@@ -58,8 +60,21 @@ public class DetailActivity extends Activity {
         info.addView(badge, new LinearLayout.LayoutParams(-1, -2));
         TextView title = text(item.title, television ? 34 : 25, Color.WHITE, true); title.setGravity(Gravity.RIGHT); title.setPadding(0, dp(10), 0, dp(18));
         info.addView(title, new LinearLayout.LayoutParams(-1, -2));
-        Button watch = button("▶  مشاهدة الآن", PURPLE); watch.setOnClickListener(v -> {
-            Intent intent = new Intent(this, WatchActivity.class); intent.putExtra("url", item.pageUrl); intent.putExtra("title", item.title); startActivity(intent);
+        boolean seriesItem = "series".equals(item.type);
+        Button watch = button(getString(seriesItem ? R.string.view_episodes : R.string.watch_now), PURPLE);
+        watch.setOnClickListener(view -> {
+            if (seriesItem) {
+                Intent intent = new Intent(this, SeriesEpisodesActivity.class);
+                intent.putExtra("item", item);
+                startActivity(intent);
+            } else {
+                Intent intent = new Intent(this, WatchActivity.class);
+                intent.putExtra("url", item.pageUrl);
+                intent.putExtra("title", item.title);
+                intent.putExtra("item", item);
+                if (nextItem != null) intent.putExtra("next_item", nextItem);
+                startActivity(intent);
+            }
         });
         LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(television ? dp(280) : -1, dp(television ? 64 : 56)); bp.setMargins(0, dp(28), 0, dp(10)); info.addView(watch, bp);
 

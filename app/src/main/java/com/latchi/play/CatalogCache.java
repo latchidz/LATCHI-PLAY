@@ -76,7 +76,10 @@ public final class CatalogCache {
                         title,
                         item.optString("image_url", ""),
                         pageUrl,
-                        item.optString("type", "movie")
+                        item.optString("type", "movie"),
+                        item.optInt("season_number", 0),
+                        item.optInt("episode_number", 0),
+                        java.util.Collections.emptyMap()
                 ));
             }
             if (items.isEmpty()) return null;
@@ -97,6 +100,8 @@ public final class CatalogCache {
                 object.put("image_url", item.imageUrl);
                 object.put("page_url", item.pageUrl);
                 object.put("type", item.type);
+                object.put("season_number", item.seasonNumber);
+                object.put("episode_number", item.episodeNumber);
                 array.put(object);
             }
             JSONObject root = new JSONObject();

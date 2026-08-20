@@ -14,7 +14,6 @@ import android.os.Environment;
 import android.provider.Settings;
 import android.widget.Toast;
 
-import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
@@ -24,10 +23,10 @@ import java.net.URL;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/** Checks public GitHub Releases and installs a newer LATCHI PLAY APK with user consent. */
+/** Checks the public update manifest and installs a newer signed APK with user consent. */
 public final class UpdateManager {
-    private static final String RELEASE_API =
-            "https://api.github.com/repos/latchidz/LATCHI-PLAY/releases/latest";
+    private static final String UPDATE_MANIFEST =
+            "https://raw.githubusercontent.com/latchidz/LATCHI-PLAY/main/update.json";
     private static final String PREFS = "latchi_updates";
     private static final String KEY_LAST_CHECK = "last_check";
     private static final String KEY_DOWNLOAD_ID = "download_id";
@@ -70,10 +69,9 @@ public final class UpdateManager {
         executor.execute(() -> {
             HttpURLConnection connection = null;
             try {
-                connection = (HttpURLConnection) new URL(RELEASE_API).openConnection();
+                connection = (HttpURLConnection) new URL(UPDATE_MANIFEST).openConnection();
                 connection.setConnectTimeout(10_000);
                 connection.setReadTimeout(15_000);
-                connection.setRequestProperty("Accept", "application/vnd.github+json");
                 connection.setRequestProperty("User-Agent", "LATCHI-PLAY-Android");
                 if (connection.getResponseCode() != 200) throw new Exception("HTTP " + connection.getResponseCode());
 
@@ -83,10 +81,13 @@ public final class UpdateManager {
                 while ((line = reader.readLine()) != null) jsonText.append(line);
                 reader.close();
 
-                JSONObject release = new JSONObject(jsonText.toString());
-                String tag = release.optString("tag_name", "").replaceFirst("^[vV]", "");
-                String notes = release.optString("body", "");
-                String apkUrl = findApk(release.optJSONArray("assets"));
+                JSONObject manifest = new JSONObject(jsonText.toString());
+                String tag = manifest.optString("version", "").replaceFirst("^[vV]", "");
+                String notes = manifest.optString("notes", "");
+                String candidateUrl = manifest.optString("apk_url", "");
+                final String apkUrl = candidateUrl.startsWith(
+                        "https://github.com/latchidz/LATCHI-PLAY/releases/download/")
+                        ? candidateUrl : null;
                 String current = BuildConfig.VERSION_NAME.replace("-debug", "");
 
                 activity.runOnUiThread(() -> {
@@ -105,18 +106,6 @@ public final class UpdateManager {
                 if (connection != null) connection.disconnect();
             }
         });
-    }
-
-    private String findApk(JSONArray assets) {
-        if (assets == null) return null;
-        for (int i = 0; i < assets.length(); i++) {
-            JSONObject asset = assets.optJSONObject(i);
-            if (asset == null) continue;
-            String name = asset.optString("name", "").toLowerCase();
-            String url = asset.optString("browser_download_url", "");
-            if (name.endsWith(".apk") && url.startsWith("https://github.com/")) return url;
-        }
-        return null;
     }
 
     private void showUpdateDialog(String version, String notes, String apkUrl) {

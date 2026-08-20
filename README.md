@@ -85,5 +85,5 @@ private static final String HOME_URL = "https://shooflive.net/";
 ## معلومات الإصدار
 
 - Package: `com.latchi.play`
-- Version: `2.2.0`
-- Version code: `4`
+- Version: `2.2.1`
+- Version code: `5`

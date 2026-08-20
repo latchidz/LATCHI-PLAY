@@ -6,6 +6,7 @@
     <string name="load_content_failed">تعذّر تحميل المحتوى</string>
     <string name="load_watch_failed">تعذّر تحميل صفحة المشاهدة</string>
     <string name="playback_failed">تعذّر تشغيل المحتوى</string>
+    <string name="trying_next_server">جارٍ تجربة سيرفر آخر…</string>
     <string name="no_internet">لا يوجد اتصال بالإنترنت\nتحقق من الاتصال وحاول مرة أخرى</string>
     <string name="retry">إعادة المحاولة</string>
     <string name="retry_more">إعادة تحميل المزيد</string>

@@ -30,6 +30,7 @@ import android.widget.Toast;
 import androidx.media3.ui.PlayerView;
 
 import java.util.Collections;
+import java.util.List;
 
 public class WatchActivity extends Activity {
     private static final String ALLOWED_HOST = "shooflive.net";
@@ -48,16 +49,19 @@ public class WatchActivity extends Activity {
     private LinearLayout chrome;
     private PlayerView playerView;
     private PlaybackController playbackController;
+    private ServerResolver serverResolver;
     private WebView webView;
     private ProgressBar progress;
     private ContentStateView stateView;
     private View customView;
     private WebChromeClient.CustomViewCallback customCallback;
     private String currentUrl;
-    private String directUrl;
-    private String directType;
+    private List<PlaybackSource> resolvedSources = Collections.emptyList();
+    private int sourceIndex;
+    private int resolverGeneration;
     private boolean nativePlayback;
     private boolean nativeReady;
+    private boolean webFallbackActive;
     private boolean mainFrameFailed;
 
     @Override
@@ -66,16 +70,25 @@ public class WatchActivity extends Activity {
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
         buildUi();
         configureWebView();
+        serverResolver = new ServerResolver();
 
         currentUrl = getIntent().getStringExtra("url");
-        directUrl = getIntent().getStringExtra("direct_url");
-        directType = getIntent().getStringExtra("direct_type");
         if (!isAllowedUrl(currentUrl)) {
             finish();
             return;
         }
-        if (isDirectMediaUrl(directUrl)) startNativePlayback();
-        else loadWatchPage();
+
+        String suppliedUrl = getIntent().getStringExtra("direct_url");
+        String suppliedType = getIntent().getStringExtra("direct_type");
+        if (isDirectMediaUrl(suppliedUrl)) {
+            resolvedSources = Collections.singletonList(new PlaybackSource(
+                    suppliedUrl, suppliedType, Collections.emptyMap(),
+                    Collections.singletonMap("origin", "intent")));
+            sourceIndex = 0;
+            startNativePlayback(resolvedSources.get(0));
+        } else {
+            resolveAndPreparePlayback();
+        }
     }
 
     private void buildUi() {
@@ -233,7 +246,53 @@ public class WatchActivity extends Activity {
         });
     }
 
-    private void startNativePlayback() {
+    private void resolveAndPreparePlayback() {
+        if (!DeviceUtils.hasInternetConnection(this)) {
+            showWatchError();
+            return;
+        }
+
+        int generation = ++resolverGeneration;
+        nativePlayback = false;
+        webFallbackActive = false;
+        webView.setVisibility(View.GONE);
+        playerView.setVisibility(View.GONE);
+        progress.setVisibility(View.VISIBLE);
+        stateView.showMessage(getString(R.string.preparing_watch));
+
+        serverResolver.resolve(currentUrl, new ServerResolver.Callback() {
+            @Override
+            public void onResolved(ServerResolver.Result result) {
+                runOnUiThread(() -> {
+                    if (generation != resolverGeneration || isFinishing() || isDestroyed()) return;
+                    resolvedSources = result.sources;
+                    sourceIndex = 0;
+                    if (resolvedSources.isEmpty()) loadWatchPage();
+                    else startNativePlayback(resolvedSources.get(0));
+                });
+            }
+
+            @Override
+            public void onError() {
+                runOnUiThread(() -> {
+                    if (generation != resolverGeneration || isFinishing() || isDestroyed()) return;
+                    loadWatchPage();
+                });
+            }
+        });
+    }
+
+    private void tryNextSourceOrFallback() {
+        sourceIndex++;
+        if (sourceIndex < resolvedSources.size()) {
+            stateView.showMessage(getString(R.string.trying_next_server));
+            startNativePlayback(resolvedSources.get(sourceIndex));
+            return;
+        }
+        loadWatchPage();
+    }
+
+    private void startNativePlayback(PlaybackSource source) {
         nativePlayback = true;
         nativeReady = false;
         webView.stopLoading();
@@ -242,7 +301,7 @@ public class WatchActivity extends Activity {
         progress.setVisibility(View.VISIBLE);
         stateView.showMessage(getString(R.string.preparing_watch));
 
-        playbackController.prepare(currentUrl, directUrl, directType, Collections.emptyMap(),
+        playbackController.prepare(currentUrl, source.url, source.type, source.headers,
                 new PlaybackController.Callback() {
                     @Override
                     public void onBuffering() {
@@ -271,14 +330,14 @@ public class WatchActivity extends Activity {
                         nativeReady = false;
                         progress.setVisibility(View.GONE);
                         playerView.setVisibility(View.GONE);
-                        stateView.showAction(getString(R.string.playback_failed),
-                                getString(R.string.retry), view -> startNativePlayback());
+                        tryNextSourceOrFallback();
                     }
                 });
     }
 
     private void loadWatchPage() {
         nativePlayback = false;
+        webFallbackActive = true;
         immersive(false);
         playerView.setVisibility(View.GONE);
         if (playbackController.isActive()) playbackController.release();
@@ -300,7 +359,10 @@ public class WatchActivity extends Activity {
         String message = DeviceUtils.hasInternetConnection(this)
                 ? getString(R.string.load_watch_failed)
                 : getString(R.string.no_internet);
-        stateView.showAction(message, getString(R.string.retry), view -> loadWatchPage());
+        stateView.showAction(message, getString(R.string.retry), view -> {
+            if (webFallbackActive) loadWatchPage();
+            else resolveAndPreparePlayback();
+        });
     }
 
     private boolean isDirectMediaUrl(String value) {
@@ -368,7 +430,9 @@ public class WatchActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        resolverGeneration++;
         immersive(false);
+        if (serverResolver != null) serverResolver.destroy();
         if (playbackController != null) playbackController.release();
         if (customView != null) hideCustomView();
         if (webView != null) {

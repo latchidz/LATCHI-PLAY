@@ -112,6 +112,8 @@ public class MainActivity extends Activity {
         addNav(nav, "الرئيسية", v -> loadPage(BASE, "أحدث الإضافات"));
         addNav(nav, "الأفلام", v -> showCategoryDialog(true));
         addNav(nav, "المسلسلات", v -> showCategoryDialog(false));
+        addNav(nav, getString(R.string.favorites), v ->
+                startActivity(new Intent(this, FavoritesActivity.class)));
         addNav(nav, "تحديث", v -> updateManager.checkManually());
 
         progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);

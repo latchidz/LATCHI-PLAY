@@ -21,6 +21,7 @@ public class DetailActivity extends Activity {
     private static final int GOLD = Color.rgb(246, 198, 75);
     private static final int PURPLE = Color.rgb(124, 58, 237);
     private CatalogItem item;
+    private FavoritesStore favoritesStore;
     private boolean television;
 
     @Override protected void onCreate(Bundle state) {
@@ -30,6 +31,7 @@ public class DetailActivity extends Activity {
         getWindow().setStatusBarColor(BG); getWindow().setNavigationBarColor(BG);
         item = (CatalogItem) getIntent().getSerializableExtra("item");
         if (item == null) { finish(); return; }
+        favoritesStore = new FavoritesStore(this);
         buildUi();
     }
 
@@ -61,17 +63,21 @@ public class DetailActivity extends Activity {
         });
         LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(television ? dp(280) : -1, dp(television ? 64 : 56)); bp.setMargins(0, dp(28), 0, dp(10)); info.addView(watch, bp);
 
-        Button favorite = button(isFavorite() ? "★  محفوظ في المفضلة" : "☆  إضافة للمفضلة", Color.rgb(34, 28, 45));
-        favorite.setOnClickListener(v -> { toggleFavorite(); favorite.setText(isFavorite() ? "★  محفوظ في المفضلة" : "☆  إضافة للمفضلة"); });
+        Button favorite = button(favoriteLabel(favoritesStore.isFavorite(item)), Color.rgb(34, 28, 45));
+        favorite.setOnClickListener(view -> {
+            boolean isFavorite = favoritesStore.toggle(item);
+            favorite.setText(favoriteLabel(isFavorite));
+        });
         info.addView(favorite, new LinearLayout.LayoutParams(television ? dp(280) : -1, dp(television ? 58 : 52)));
 
-        Button back = button("رجوع", Color.rgb(24, 20, 32)); back.setOnClickListener(v -> finish());
+        Button back = button(getString(R.string.back), Color.rgb(24, 20, 32)); back.setOnClickListener(v -> finish());
         LinearLayout.LayoutParams backParams = new LinearLayout.LayoutParams(television ? dp(180) : -1, dp(television ? 54 : 48)); backParams.setMargins(0, dp(10), 0, 0); info.addView(back, backParams);
         if (television) watch.requestFocus();
     }
 
-    private boolean isFavorite() { return getSharedPreferences("favorites", MODE_PRIVATE).getBoolean(item.pageUrl, false); }
-    private void toggleFavorite() { getSharedPreferences("favorites", MODE_PRIVATE).edit().putBoolean(item.pageUrl, !isFavorite()).apply(); }
+    private String favoriteLabel(boolean favorite) {
+        return getString(favorite ? R.string.favorite_saved : R.string.favorite_add);
+    }
 
     private Button button(String label, int color) {
         Button b = new Button(this); b.setText(label); b.setAllCaps(false); b.setTextColor(Color.WHITE); b.setTextSize(television ? 17 : 15);

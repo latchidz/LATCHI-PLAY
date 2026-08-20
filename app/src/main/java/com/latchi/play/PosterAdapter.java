@@ -23,14 +23,21 @@ import java.util.List;
 
 public final class PosterAdapter extends RecyclerView.Adapter<PosterAdapter.Holder> {
     public interface Listener { void onOpen(CatalogItem item); }
+    public interface LongListener { void onLongOpen(CatalogItem item); }
 
     private final List<CatalogItem> items = new ArrayList<>();
     private final Listener listener;
+    private final LongListener longListener;
     private final boolean television;
 
     public PosterAdapter(boolean television, Listener listener) {
+        this(television, listener, null);
+    }
+
+    public PosterAdapter(boolean television, Listener listener, LongListener longListener) {
         this.television = television;
         this.listener = listener;
+        this.longListener = longListener;
         setHasStableIds(true);
     }
 
@@ -122,7 +129,16 @@ public final class PosterAdapter extends RecyclerView.Adapter<PosterAdapter.Hold
                     .centerCrop()
                     .into(holder.poster);
         }
+        holder.itemView.setContentDescription(item.title);
         holder.itemView.setOnClickListener(v -> listener.onOpen(item));
+        if (longListener != null) {
+            holder.itemView.setOnLongClickListener(view -> {
+                longListener.onLongOpen(item);
+                return true;
+            });
+        } else {
+            holder.itemView.setOnLongClickListener(null);
+        }
     }
 
     private String badgeText(CatalogItem item) {

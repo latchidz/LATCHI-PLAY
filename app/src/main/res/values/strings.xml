@@ -12,5 +12,14 @@
     <string name="offline_title">%1$s • دون اتصال</string>
     <string name="cached_title">%1$s • نسخة محفوظة</string>
     <string name="back">رجوع</string>
+    <string name="favorites">المفضلة</string>
+    <string name="favorite_add">☆  إضافة للمفضلة</string>
+    <string name="favorite_saved">★  محفوظ في المفضلة</string>
+    <string name="favorites_empty">لا توجد عناصر في المفضلة\nأضف أفلامًا ومسلسلات للوصول إليها لاحقًا</string>
+    <string name="favorite_remove_hint">ضغط مطوّل للحذف</string>
+    <string name="remove_favorite_title">إزالة من المفضلة؟</string>
+    <string name="removed_from_favorites">تمت الإزالة من المفضلة</string>
+    <string name="remove">إزالة</string>
+    <string name="cancel">إلغاء</string>
     <string name="external_window_blocked">تم منع نافذة خارجية</string>
 </resources>

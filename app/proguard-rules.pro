@@ -1,3 +1,7 @@
 -keepattributes *Annotation*
 -keepclassmembers class * extends android.webkit.WebChromeClient { *; }
 -keepclassmembers class * extends android.webkit.WebViewClient { *; }
+-keep class com.latchi.play.CatalogItem { *; }
+-keep public class * implements com.bumptech.glide.module.GlideModule
+-keep public class * extends com.bumptech.glide.module.AppGlideModule
+-keep public enum com.bumptech.glide.load.ImageHeaderParser$** { **[] $VALUES; public *; }

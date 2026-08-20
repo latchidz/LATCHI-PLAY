@@ -19,6 +19,14 @@ public final class DeviceUtils {
                 pm.hasSystemFeature("android.hardware.type.television");
     }
 
+    public static int catalogColumns(Context context, boolean television) {
+        if (television) return 5;
+        int widthDp = context.getResources().getConfiguration().screenWidthDp;
+        if (widthDp >= 840) return 5;
+        if (widthDp >= 600) return 4;
+        return 3;
+    }
+
     public static boolean hasInternetConnection(Context context) {
         ConnectivityManager manager = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
         if (manager == null) return false;

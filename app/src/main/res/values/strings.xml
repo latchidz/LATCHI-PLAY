@@ -1,5 +1,11 @@
 <resources>
     <string name="app_name">LATCHI PLAY</string>
+    <string name="home">الرئيسية</string>
+    <string name="movies">الأفلام</string>
+    <string name="series">المسلسلات</string>
+    <string name="search">بحث</string>
+    <string name="update">تحديث</string>
+    <string name="latest_additions">أحدث الإضافات</string>
     <string name="loading_content">جارٍ تحميل المحتوى…</string>
     <string name="preparing_watch">جارٍ تحضير المشاهدة…</string>
     <string name="no_results">لا توجد نتائج</string>

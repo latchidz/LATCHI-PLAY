@@ -15,6 +15,7 @@ import android.view.inputmethod.EditorInfo;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
+import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
@@ -68,7 +69,7 @@ public class MainActivity extends Activity {
         buildUi();
         updateManager = new UpdateManager(this);
         updateManager.checkAutomatically();
-        loadPage(BASE, "أحدث الإضافات");
+        loadPage(BASE, getString(R.string.latest_additions));
     }
 
     private void buildUi() {
@@ -86,6 +87,7 @@ public class MainActivity extends Activity {
 
         ImageView icon = new ImageView(this);
         icon.setImageResource(R.mipmap.ic_launcher);
+        icon.setContentDescription(getString(R.string.app_name));
         icon.setScaleType(ImageView.ScaleType.CENTER_CROP);
         header.addView(icon, new LinearLayout.LayoutParams(dp(television ? 52 : 40), dp(television ? 52 : 40)));
 
@@ -93,14 +95,15 @@ public class MainActivity extends Activity {
         brandBox.setOrientation(LinearLayout.VERTICAL);
         brandBox.setPadding(dp(10), 0, dp(10), 0);
         header.addView(brandBox, new LinearLayout.LayoutParams(0, -1, 1));
-        TextView brand = text("LATCHI PLAY", television ? 24 : 18, GOLD, true);
+        TextView brand = text(getString(R.string.app_name), television ? 24 : 18, GOLD, true);
         brand.setGravity(Gravity.CENTER_VERTICAL | Gravity.RIGHT);
         brandBox.addView(brand, new LinearLayout.LayoutParams(-1, 0, 1));
         screenTitle = text("", television ? 13 : 11, Color.rgb(175, 167, 190), false);
         screenTitle.setGravity(Gravity.CENTER_VERTICAL | Gravity.RIGHT);
         brandBox.addView(screenTitle, new LinearLayout.LayoutParams(-1, 0, 1));
 
-        Button search = actionButton("بحث");
+        Button search = actionButton(getString(R.string.search));
+        search.setContentDescription(getString(R.string.search));
         search.setOnClickListener(v -> showSearch());
         header.addView(search, new LinearLayout.LayoutParams(dp(television ? 110 : 72), dp(television ? 48 : 40)));
 
@@ -108,15 +111,25 @@ public class MainActivity extends Activity {
         nav.setGravity(Gravity.CENTER);
         nav.setPadding(dp(television ? 22 : 7), dp(6), dp(television ? 22 : 7), dp(6));
         nav.setBackgroundColor(Color.rgb(12, 10, 17));
-        root.addView(nav, new LinearLayout.LayoutParams(-1, dp(television ? 68 : 58)));
-        addNav(nav, "الرئيسية", v -> loadPage(BASE, "أحدث الإضافات"));
-        addNav(nav, "الأفلام", v -> showCategoryDialog(true));
-        addNav(nav, "المسلسلات", v -> showCategoryDialog(false));
+        if (television) {
+            root.addView(nav, new LinearLayout.LayoutParams(-1, dp(68)));
+        } else {
+            HorizontalScrollView scroll = new HorizontalScrollView(this);
+            scroll.setHorizontalScrollBarEnabled(false);
+            scroll.setFillViewport(false);
+            scroll.setBackgroundColor(Color.rgb(12, 10, 17));
+            scroll.addView(nav, new HorizontalScrollView.LayoutParams(-2, -1));
+            root.addView(scroll, new LinearLayout.LayoutParams(-1, dp(58)));
+        }
+        addNav(nav, getString(R.string.home), v ->
+                loadPage(BASE, getString(R.string.latest_additions)));
+        addNav(nav, getString(R.string.movies), v -> showCategoryDialog(true));
+        addNav(nav, getString(R.string.series), v -> showCategoryDialog(false));
         addNav(nav, getString(R.string.favorites), v ->
                 startActivity(new Intent(this, FavoritesActivity.class)));
         addNav(nav, getString(R.string.history), v ->
                 startActivity(new Intent(this, HistoryActivity.class)));
-        addNav(nav, "تحديث", v -> updateManager.checkManually());
+        addNav(nav, getString(R.string.update), v -> updateManager.checkManually());
 
         progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         progress.setIndeterminate(true);
@@ -132,7 +145,7 @@ public class MainActivity extends Activity {
         grid.setPadding(dp(television ? 24 : 4), dp(television ? 16 : 5), dp(television ? 24 : 4), dp(24));
         grid.setItemAnimator(null);
         grid.setDescendantFocusability(android.view.ViewGroup.FOCUS_AFTER_DESCENDANTS);
-        int columns = television ? 5 : 3;
+        int columns = DeviceUtils.catalogColumns(this, television);
         grid.setLayoutManager(new GridLayoutManager(this, columns));
         adapter = new PosterAdapter(television, this::openDetails);
         grid.setAdapter(adapter);
@@ -404,9 +417,11 @@ public class MainActivity extends Activity {
             });
         }
         button.setOnClickListener(listener);
-        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, -1, 1);
-        p.setMargins(dp(4), 0, dp(4), 0);
-        nav.addView(button, p);
+        LinearLayout.LayoutParams params = television
+                ? new LinearLayout.LayoutParams(0, -1, 1)
+                : new LinearLayout.LayoutParams(dp(92), -1);
+        params.setMargins(dp(4), 0, dp(4), 0);
+        nav.addView(button, params);
     }
 
     private Button actionButton(String label) {

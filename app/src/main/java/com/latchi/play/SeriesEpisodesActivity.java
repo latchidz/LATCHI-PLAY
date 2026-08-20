@@ -108,7 +108,7 @@ public final class SeriesEpisodesActivity extends Activity {
         grid = new RecyclerView(this);
         grid.setClipToPadding(false);
         grid.setPadding(dp(television ? 24 : 4), dp(8), dp(television ? 24 : 4), dp(24));
-        grid.setLayoutManager(new GridLayoutManager(this, television ? 5 : 3));
+        grid.setLayoutManager(new GridLayoutManager(this, DeviceUtils.catalogColumns(this, television)));
         grid.setItemAnimator(null);
         adapter = new PosterAdapter(television, this::openEpisode);
         grid.setAdapter(adapter);

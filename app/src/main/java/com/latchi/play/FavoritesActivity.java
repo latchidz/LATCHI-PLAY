@@ -88,7 +88,7 @@ public final class FavoritesActivity extends Activity {
         grid.setPadding(dp(television ? 24 : 4), dp(television ? 16 : 5),
                 dp(television ? 24 : 4), dp(24));
         grid.setItemAnimator(null);
-        grid.setLayoutManager(new GridLayoutManager(this, television ? 5 : 3));
+        grid.setLayoutManager(new GridLayoutManager(this, DeviceUtils.catalogColumns(this, television)));
         adapter = new PosterAdapter(television, this::openDetails, this::confirmRemove);
         grid.setAdapter(adapter);
         content.addView(grid, new FrameLayout.LayoutParams(-1, -1));

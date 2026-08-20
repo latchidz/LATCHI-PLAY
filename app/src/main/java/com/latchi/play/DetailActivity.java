@@ -46,7 +46,11 @@ public class DetailActivity extends Activity {
 
         ImageView poster = new ImageView(this); poster.setScaleType(ImageView.ScaleType.CENTER_CROP);
         poster.setBackground(round(Color.rgb(25, 20, 34), dp(20), Color.rgb(78, 56, 104)));
-        poster.setClipToOutline(true); Glide.with(this).load(item.imageUrl).centerCrop().into(poster);
+        poster.setContentDescription(item.title);
+        poster.setClipToOutline(true);
+        boolean landscapeCover = item.imageUrl.toLowerCase().contains("cover") || item.imageUrl.contains("470x264");
+        if (landscapeCover) Glide.with(this).load(item.imageUrl).fitCenter().into(poster);
+        else Glide.with(this).load(item.imageUrl).centerCrop().into(poster);
         LinearLayout.LayoutParams posterParams = television
                 ? new LinearLayout.LayoutParams(dp(300), dp(440))
                 : new LinearLayout.LayoutParams(-1, dp(430));

@@ -1,0 +1,73 @@
+# LATCHI PLAY 2.0
+
+تطبيق Android أصلي خفيف بواجهة عربية لعرض موقع **shooflive.net** داخل بيئة مشاهدة محسّنة. أُعيدت كتابة النسخة القديمة بالكامل لإزالة تعارضات React Native والمزوّدات المتوقفة، ولجعل البناء على Codemagic مباشرًا وثابتًا.
+
+## ما تغيّر؟
+
+- تطبيق Android أصلي بلغة Java، دون Node.js أو React Native.
+- المصدر الحالي: `https://shooflive.net/`.
+- شريط تنقّل سريع: الرئيسية، الأفلام، المسلسلات، الأخبار.
+- بحث داخلي عن الأفلام والمسلسلات.
+- مشغّل فيديو بملء الشاشة وتدوير تلقائي للوضع الأفقي.
+- حفظ آخر صفحة واستعادتها عند فتح التطبيق.
+- شاشة احترافية عند انقطاع الإنترنت مع زر إعادة المحاولة.
+- تعطيل HTTP غير المشفّر والوصول المحلي للملفات.
+- أيقونة وشاشة افتتاحية جديدة بهوية LATCHI PLAY.
+- استهداف Android API 35، والحد الأدنى Android 6 (API 23).
+- Workflow جاهز لإنتاج APK، وآخر لإنتاج AAB موقّع للمتجر.
+
+> التطبيق لا يستخرج روابط الفيديو، ولا يتجاوز حماية الموقع، ولا يتيح تنزيل المحتوى. يجب استخدامه فقط بإذن مالك الموقع وحقوق المحتوى.
+
+## البناء على Codemagic
+
+1. أضف المستودع إلى Codemagic.
+2. اختر **Codemagic YAML**.
+3. شغّل workflow: `android-debug-apk`.
+4. بعد انتهاء البناء ستجد الملف `LATCHI-PLAY.apk` ضمن Artifacts.
+
+هذا الـAPK موقّع بمفتاح Debug ومخصص للتجربة والتثبيت المباشر.
+
+## إصدار Google Play الموقّع
+
+أنشئ Variable group في Codemagic باسم `android_signing` وأضف المتغيرات الآتية كـSecure:
+
+| المتغير | القيمة |
+|---|---|
+| `CM_KEYSTORE` | ملف keystore مشفّر Base64 |
+| `CM_KEYSTORE_PASSWORD` | كلمة مرور keystore |
+| `CM_KEY_ALIAS` | اسم المفتاح |
+| `CM_KEY_PASSWORD` | كلمة مرور المفتاح |
+
+ثم شغّل `android-release-aab`. الناتج: `LATCHI-PLAY-release.aab`.
+
+لتحويل keystore إلى Base64:
+
+```bash
+base64 -w 0 release.keystore
+```
+
+على macOS:
+
+```bash
+base64 release.keystore | tr -d '\n'
+```
+
+## تخصيص المصدر
+
+الرابط الرئيسي موجود في:
+
+```text
+app/src/main/java/com/latchi/play/MainActivity.java
+```
+
+داخل الثابت:
+
+```java
+private static final String HOME_URL = "https://shooflive.net/";
+```
+
+## معلومات الإصدار
+
+- Package: `com.latchi.play`
+- Version: `2.0.0`
+- Version code: `2`

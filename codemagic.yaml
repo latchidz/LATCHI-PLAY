@@ -1,176 +1,55 @@
 workflows:
-  latchi-play-android-apk:
-    name: LATCHI PLAY Android APK
-    max_build_duration: 120
-    instance_type: mac_mini_m2
-
+  android-debug-apk:
+    name: LATCHI PLAY - APK
+    instance_type: linux_x2
+    max_build_duration: 60
     environment:
-      node: 16.20.2
       java: 17
-      vars:
-        APP_NAME: "LATCHI PLAY"
-        PACKAGE_NAME: "com.latchi.play"
-
     cache:
       cache_paths:
         - $HOME/.gradle/caches
         - $HOME/.gradle/wrapper
-        - $CM_BUILD_DIR/node_modules
-
     scripts:
-      - name: Show project structure
+      - name: Verify environment
         script: |
-          pwd
-          ls -la
-          echo "--- android structure ---"
-          ls -la android
-          echo "--- app structure ---"
-          ls -la android/app
-
-      - name: Show build environment
-        script: |
-          node --version
-          npm --version
           java -version
-
-      - name: Clean local machine files
+          chmod +x gradlew
+          ./gradlew --version
+      - name: Build installable APK
         script: |
-          rm -f android/local.properties
-          rm -rf .idea
-          rm -rf android/.gradle
-          rm -rf android/app/build
-
-      - name: Install JavaScript dependencies
-        script: |
-          npm install --legacy-peer-deps --no-audit --no-fund
-
-      - name: Verify Gradle wrapper
-        script: |
-          if [ ! -f "android/gradlew" ]; then
-            echo "ERROR: android/gradlew not found"
-            exit 1
-          fi
-          chmod +x android/gradlew
-          echo "Gradle wrapper is ready"
-
-      - name: Build Release APK with retry
-        script: |
-          cd android
-          attempt=1
-          max=3
-          while true; do
-            echo "===== Release build attempt $attempt ====="
-            set -o pipefail
-            ./gradlew --no-daemon clean :app:assembleRelease --stacktrace 2>&1 | tee "$CM_BUILD_DIR/build_release_log.txt"
-            status=$?
-            set +o pipefail
-            if [ "$status" -eq 0 ]; then
-              echo "Release build succeeded"
-              break
-            fi
-            if grep -qiE "Read timed out|Could not (GET|download)|connection reset|Network is unreachable|Could not resolve|Received fatal alert|handshake_failure" "$CM_BUILD_DIR/build_release_log.txt" \
-               && ! grep -qiE "compileReleaseKotlin FAILED|compileReleaseJavaWithJavac FAILED|Compilation error|^e: " "$CM_BUILD_DIR/build_release_log.txt" \
-               && [ "$attempt" -lt "$max" ]; then
-              echo "Network issue detected. Retrying in 20s..."
-              attempt=$((attempt+1))
-              sleep 20
-              continue
-            fi
-            echo "Build failed due to a real error. See build_release_log.txt"
-            exit 1
-          done
-
-      - name: Verify and collect APK
-        script: |
-          APK=$(find android/app/build/outputs/apk/release -name "*.apk" | head -1)
-          if [ -z "$APK" ]; then
-            echo "ERROR: No release APK produced."
-            exit 1
-          fi
-          mkdir -p "$CM_BUILD_DIR/artifacts"
-          cp "$APK" "$CM_BUILD_DIR/artifacts/latchi-play-release.apk"
-          ls -la "$CM_BUILD_DIR/artifacts"
-
+          ./gradlew clean :app:assembleDebug --stacktrace
+          cp app/build/outputs/apk/debug/app-debug.apk "$CM_BUILD_DIR/LATCHI-PLAY.apk"
     artifacts:
-      - artifacts/*.apk
-      - android/app/build/outputs/apk/release/*.apk
-      - build_release_log.txt
-      - android/app/build/reports/**/*
+      - LATCHI-PLAY.apk
+      - app/build/outputs/apk/debug/*.apk
+      - app/build/reports/**/*
 
-  latchi-play-android-debug:
-    name: LATCHI PLAY Android Debug APK
-    max_build_duration: 120
-    instance_type: mac_mini_m2
-
+  android-release-aab:
+    name: LATCHI PLAY - Play Store AAB
+    instance_type: linux_x2
+    max_build_duration: 60
     environment:
-      node: 16.20.2
       java: 17
-      vars:
-        APP_NAME: "LATCHI PLAY"
-        PACKAGE_NAME: "com.latchi.play"
-
+      groups:
+        - android_signing
     cache:
       cache_paths:
         - $HOME/.gradle/caches
         - $HOME/.gradle/wrapper
-        - $CM_BUILD_DIR/node_modules
-
     scripts:
-      - name: Clean local machine files
+      - name: Build signed release bundle
         script: |
-          rm -f android/local.properties
-          rm -rf .idea
-          rm -rf android/.gradle
-          rm -rf android/app/build
-
-      - name: Install JavaScript dependencies
-        script: |
-          npm install --legacy-peer-deps --no-audit --no-fund
-
-      - name: Verify Gradle wrapper
-        script: |
-          chmod +x android/gradlew
-
-      - name: Build Debug APK with retry
-        script: |
-          cd android
-          attempt=1
-          max=3
-          while true; do
-            echo "===== Debug build attempt $attempt ====="
-            set -o pipefail
-            ./gradlew --no-daemon clean :app:assembleDebug --stacktrace 2>&1 | tee "$CM_BUILD_DIR/build_debug_log.txt"
-            status=$?
-            set +o pipefail
-            if [ "$status" -eq 0 ]; then
-              echo "Debug build succeeded"
-              break
-            fi
-            if grep -qiE "Read timed out|Could not (GET|download)|connection reset|Network is unreachable|Could not resolve|Received fatal alert|handshake_failure" "$CM_BUILD_DIR/build_debug_log.txt" \
-               && ! grep -qiE "compileDebugKotlin FAILED|compileDebugJavaWithJavac FAILED|Compilation error|^e: " "$CM_BUILD_DIR/build_debug_log.txt" \
-               && [ "$attempt" -lt "$max" ]; then
-              echo "Network issue detected. Retrying in 20s..."
-              attempt=$((attempt+1))
-              sleep 20
-              continue
-            fi
-            echo "Build failed due to a real error. See build_debug_log.txt"
-            exit 1
-          done
-
-      - name: Verify and collect APK
-        script: |
-          APK=$(find android/app/build/outputs/apk/debug -name "*.apk" | head -1)
-          if [ -z "$APK" ]; then
-            echo "ERROR: No debug APK produced."
-            exit 1
-          fi
-          mkdir -p "$CM_BUILD_DIR/artifacts"
-          cp "$APK" "$CM_BUILD_DIR/artifacts/latchi-play-debug.apk"
-          ls -la "$CM_BUILD_DIR/artifacts"
-
+          set -e
+          : "${CM_KEYSTORE:?Add CM_KEYSTORE to the android_signing group}"
+          : "${CM_KEYSTORE_PASSWORD:?Add CM_KEYSTORE_PASSWORD to the android_signing group}"
+          : "${CM_KEY_ALIAS:?Add CM_KEY_ALIAS to the android_signing group}"
+          : "${CM_KEY_PASSWORD:?Add CM_KEY_PASSWORD to the android_signing group}"
+          export CM_KEYSTORE_PATH="$CM_BUILD_DIR/release.keystore"
+          echo "$CM_KEYSTORE" | base64 --decode > "$CM_KEYSTORE_PATH"
+          chmod +x gradlew
+          ./gradlew clean :app:bundleRelease --stacktrace
+          cp app/build/outputs/bundle/release/app-release.aab "$CM_BUILD_DIR/LATCHI-PLAY-release.aab"
     artifacts:
-      - artifacts/*.apk
-      - android/app/build/outputs/apk/debug/*.apk
-      - build_debug_log.txt
-      - android/app/build/reports/**/*
+      - LATCHI-PLAY-release.aab
+      - app/build/outputs/bundle/release/*.aab
+      - app/build/reports/**/*

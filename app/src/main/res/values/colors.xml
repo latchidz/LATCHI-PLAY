@@ -1,0 +1,8 @@
+<resources>
+    <color name="black">#07060B</color>
+    <color name="surface">#121019</color>
+    <color name="surface_raised">#1B1824</color>
+    <color name="gold">#F6C64B</color>
+    <color name="purple">#7C3AED</color>
+    <color name="white">#FFFDF8</color>
+</resources>

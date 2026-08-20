@@ -51,6 +51,7 @@ public class WatchActivity extends Activity {
     private PlayerView playerView;
     private PlaybackController playbackController;
     private ServerResolver serverResolver;
+    private HistoryStore historyStore;
     private WebView webView;
     private ProgressBar progress;
     private ContentStateView stateView;
@@ -78,6 +79,7 @@ public class WatchActivity extends Activity {
         currentUrl = getIntent().getStringExtra("url");
         currentItem = (CatalogItem) getIntent().getSerializableExtra("item");
         nextItem = (CatalogItem) getIntent().getSerializableExtra("next_item");
+        historyStore = new HistoryStore(this);
         if (!isAllowedUrl(currentUrl)) {
             finish();
             return;
@@ -85,6 +87,7 @@ public class WatchActivity extends Activity {
 
         String suppliedUrl = getIntent().getStringExtra("direct_url");
         String suppliedType = getIntent().getStringExtra("direct_type");
+        if (currentItem != null) historyStore.markOpened(currentItem);
         if (isDirectMediaUrl(suppliedUrl)) {
             resolvedSources = Collections.singletonList(new PlaybackSource(
                     suppliedUrl, suppliedType, Collections.emptyMap(),
@@ -327,6 +330,7 @@ public class WatchActivity extends Activity {
                     @Override
                     public void onEnded() {
                         progress.setVisibility(View.GONE);
+                        updateHistoryFromPlayer();
                         playerView.showController();
                         if (nextItem != null) {
                             stateView.showAction(getString(R.string.next_episode_available),
@@ -372,6 +376,13 @@ public class WatchActivity extends Activity {
             if (webFallbackActive) loadWatchPage();
             else resolveAndPreparePlayback();
         });
+    }
+
+    private void updateHistoryFromPlayer() {
+        if (currentItem == null || historyStore == null || playbackController == null ||
+                !playbackController.isActive()) return;
+        historyStore.update(currentItem, playbackController.getCurrentPosition(),
+                playbackController.getDuration());
     }
 
     private void openNextEpisode() {
@@ -442,8 +453,10 @@ public class WatchActivity extends Activity {
 
     @Override
     protected void onPause() {
-        if (nativePlayback && playbackController != null) playbackController.pause();
-        else if (webView != null) webView.onPause();
+        if (nativePlayback && playbackController != null) {
+            updateHistoryFromPlayer();
+            playbackController.pause();
+        } else if (webView != null) webView.onPause();
         super.onPause();
     }
 
@@ -451,6 +464,7 @@ public class WatchActivity extends Activity {
     protected void onDestroy() {
         resolverGeneration++;
         immersive(false);
+        updateHistoryFromPlayer();
         if (serverResolver != null) serverResolver.destroy();
         if (playbackController != null) playbackController.release();
         if (customView != null) hideCustomView();

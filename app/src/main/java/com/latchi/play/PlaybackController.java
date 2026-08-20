@@ -112,6 +112,14 @@ public final class PlaybackController {
         return player != null;
     }
 
+    public long getCurrentPosition() {
+        return player == null ? 0L : Math.max(0L, player.getCurrentPosition());
+    }
+
+    public long getDuration() {
+        return player == null ? 0L : Math.max(0L, player.getDuration());
+    }
+
     public void release() {
         releasePlayer(true);
     }

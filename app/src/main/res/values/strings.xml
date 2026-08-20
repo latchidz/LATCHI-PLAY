@@ -30,5 +30,11 @@
     <string name="season_number">الموسم %1$d</string>
     <string name="next_episode_available">انتهت الحلقة</string>
     <string name="play_next_episode">تشغيل الحلقة التالية</string>
+    <string name="history">السجل</string>
+    <string name="continue_watching">متابعة المشاهدة والسجل</string>
+    <string name="history_empty">لا يوجد سجل مشاهدة بعد</string>
+    <string name="history_remove_hint">ضغط مطوّل للحذف</string>
+    <string name="remove_history_title">إزالة من السجل؟</string>
+    <string name="removed_from_history">تمت الإزالة من السجل</string>
     <string name="external_window_blocked">تم منع نافذة خارجية</string>
 </resources>

@@ -107,7 +107,10 @@ public final class PosterAdapter extends RecyclerView.Adapter<PosterAdapter.Hold
         holder.title.setText(item.title);
         holder.badge.setText(badgeText(item));
         Glide.with(holder.poster).load(item.imageUrl).diskCacheStrategy(DiskCacheStrategy.ALL)
-                .placeholder(android.R.color.darker_gray).centerCrop().into(holder.poster);
+                .placeholder(android.R.color.darker_gray)
+                .error(android.R.color.darker_gray)
+                .centerCrop()
+                .into(holder.poster);
         holder.itemView.setOnClickListener(v -> listener.onOpen(item));
     }
 

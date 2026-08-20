@@ -14,11 +14,11 @@ import android.view.WindowManager;
 import android.view.inputmethod.EditorInfo;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
@@ -38,8 +38,11 @@ public class MainActivity extends Activity {
     private RecyclerView grid;
     private ProgressBar progress;
     private TextView screenTitle;
-    private TextView emptyView;
+    private ContentStateView stateView;
     private UpdateManager updateManager;
+    private int requestGeneration;
+    private String activeUrl;
+    private boolean loading;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -106,14 +109,8 @@ public class MainActivity extends Activity {
         progress.setVisibility(View.GONE);
         root.addView(progress, new LinearLayout.LayoutParams(-1, dp(3)));
 
-        LinearLayout content = new LinearLayout(this);
-        content.setOrientation(LinearLayout.VERTICAL);
+        FrameLayout content = new FrameLayout(this);
         root.addView(content, new LinearLayout.LayoutParams(-1, 0, 1));
-
-        emptyView = text("", television ? 22 : 17, Color.rgb(180, 173, 190), true);
-        emptyView.setGravity(Gravity.CENTER);
-        emptyView.setVisibility(View.GONE);
-        content.addView(emptyView, new LinearLayout.LayoutParams(-1, -1));
 
         grid = new RecyclerView(this);
         grid.setClipToPadding(false);
@@ -124,39 +121,78 @@ public class MainActivity extends Activity {
         grid.setLayoutManager(new GridLayoutManager(this, columns));
         adapter = new PosterAdapter(television, this::openDetails);
         grid.setAdapter(adapter);
-        content.removeView(emptyView);
-        content.addView(grid, new LinearLayout.LayoutParams(-1, 0, 1));
-        content.addView(emptyView, new LinearLayout.LayoutParams(-1, 0, 1));
+        content.addView(grid, new FrameLayout.LayoutParams(-1, -1));
+
+        stateView = new ContentStateView(this, television);
+        content.addView(stateView, new FrameLayout.LayoutParams(-1, -1));
     }
 
     private void loadPage(String url, String title) {
+        if (loading && url.equals(activeUrl)) return;
+
         screenTitle.setText(title);
+        activeUrl = url;
+        loading = true;
+        int generation = ++requestGeneration;
+
+        if (!DeviceUtils.hasInternetConnection(this)) {
+            loading = false;
+            showLoadError(url, title, getString(R.string.no_internet));
+            return;
+        }
+
         progress.setVisibility(View.VISIBLE);
-        emptyView.setVisibility(View.GONE);
-        grid.setVisibility(View.VISIBLE);
+        grid.setVisibility(View.GONE);
+        stateView.showMessage(getString(R.string.loading_content));
+
         client.load(url, new CatalogClient.Callback() {
-            @Override public void onSuccess(List<CatalogItem> items) {
+            @Override
+            public void onSuccess(List<CatalogItem> items) {
                 runOnUiThread(() -> {
+                    if (!isCurrentRequest(generation)) return;
+                    loading = false;
                     progress.setVisibility(View.GONE);
+                    if (items.isEmpty()) {
+                        grid.setVisibility(View.GONE);
+                        stateView.showMessage(getString(R.string.no_results));
+                        return;
+                    }
+
+                    stateView.hide();
+                    grid.setVisibility(View.VISIBLE);
                     adapter.submit(items);
                     if (television) grid.postDelayed(() -> {
                         RecyclerView.ViewHolder holder = grid.findViewHolderForAdapterPosition(0);
-                        if (holder != null) holder.itemView.requestFocus(); else grid.requestFocus();
+                        if (holder != null) holder.itemView.requestFocus();
+                        else grid.requestFocus();
                     }, 250);
                 });
             }
-            @Override public void onError(String message) {
+
+            @Override
+            public void onError(CatalogClient.Failure failure) {
                 runOnUiThread(() -> {
+                    if (!isCurrentRequest(generation)) return;
+                    loading = false;
                     progress.setVisibility(View.GONE);
-                    grid.setVisibility(View.GONE);
-                    emptyView.setVisibility(View.VISIBLE);
-                    emptyView.setText("تعذّر تحميل المحتوى\nاضغط لإعادة المحاولة");
-                    emptyView.setOnClickListener(v -> loadPage(url, title));
-                    emptyView.setFocusable(television);
-                    if (television) emptyView.requestFocus();
+                    String message = failure.type == CatalogClient.FailureType.NETWORK ||
+                            failure.type == CatalogClient.FailureType.TIMEOUT
+                            ? getString(R.string.no_internet)
+                            : getString(R.string.load_content_failed);
+                    showLoadError(url, title, message);
                 });
             }
         });
+    }
+
+    private boolean isCurrentRequest(int generation) {
+        return generation == requestGeneration && !isFinishing() && !isDestroyed();
+    }
+
+    private void showLoadError(String url, String title, String message) {
+        progress.setVisibility(View.GONE);
+        grid.setVisibility(View.GONE);
+        stateView.showAction(message, getString(R.string.retry), view -> loadPage(url, title));
     }
 
     private void openDetails(CatalogItem item) {
@@ -248,11 +284,17 @@ public class MainActivity extends Activity {
 
     private int dp(int v) { return Math.round(v * getResources().getDisplayMetrics().density); }
 
-    @Override protected void onResume() {
-        super.onResume(); if (updateManager != null) updateManager.resumePendingInstall();
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (updateManager != null) updateManager.resumePendingInstall();
     }
 
-    @Override protected void onDestroy() {
-        if (client != null) client.destroy(); if (updateManager != null) updateManager.destroy(); super.onDestroy();
+    @Override
+    protected void onDestroy() {
+        requestGeneration++;
+        if (client != null) client.destroy();
+        if (updateManager != null) updateManager.destroy();
+        super.onDestroy();
     }
 }

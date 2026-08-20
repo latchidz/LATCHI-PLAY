@@ -1,3 +1,12 @@
 <resources>
     <string name="app_name">LATCHI PLAY</string>
+    <string name="loading_content">جارٍ تحميل المحتوى…</string>
+    <string name="preparing_watch">جارٍ تحضير المشاهدة…</string>
+    <string name="no_results">لا توجد نتائج</string>
+    <string name="load_content_failed">تعذّر تحميل المحتوى</string>
+    <string name="load_watch_failed">تعذّر تحميل صفحة المشاهدة</string>
+    <string name="no_internet">لا يوجد اتصال بالإنترنت\nتحقق من الاتصال وحاول مرة أخرى</string>
+    <string name="retry">إعادة المحاولة</string>
+    <string name="back">رجوع</string>
+    <string name="external_window_blocked">تم منع نافذة خارجية</string>
 </resources>

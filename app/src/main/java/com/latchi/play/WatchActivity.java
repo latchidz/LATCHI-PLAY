@@ -14,7 +14,9 @@ import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.webkit.CookieManager;
 import android.webkit.WebChromeClient;
+import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -26,48 +28,283 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 public class WatchActivity extends Activity {
-    private static final String CLEAN_PLAYER_JS = "(function(){document.cookie='sb_seen=1;path=/;max-age=31536000';" +
-            "var st=document.createElement('style');st.textContent='#headerNav,body>footer,.footer,#sbOverlay,.sbBox,.sbPopup,.singleInfo,.sec-line,.share-button-wrapper{display:none!important}html,body,main,.secContainer,.containers{margin:0!important;padding:0!important;background:#000!important;width:100%!important;min-height:100%!important}.getEmbed,.watch{margin:0!important;padding:0!important;width:100%!important;min-height:calc(100vh - 4px)!important;background:#000!important}.getEmbed iframe,.watch iframe,.watch video{width:100%!important;min-height:80vh!important;border:0!important}';document.documentElement.appendChild(st);var p=document.getElementById('sbOverlay');if(p)p.remove();document.querySelectorAll('a[target=\"_blank\"]').forEach(function(a){a.target='_self'});})();";
+    private static final String ALLOWED_HOST = "shooflive.net";
+    private static final String CLEAN_PLAYER_JS =
+            "(function(){document.cookie='sb_seen=1;path=/;max-age=31536000';" +
+            "var st=document.createElement('style');st.textContent='" +
+            "#headerNav,body>footer,.footer,#sbOverlay,.sbBox,.sbPopup,.singleInfo,.sec-line,.share-button-wrapper{display:none!important}" +
+            "html,body,main,.secContainer,.containers{margin:0!important;padding:0!important;background:#000!important;width:100%!important;min-height:100%!important}" +
+            ".getEmbed,.watch{margin:0!important;padding:0!important;width:100%!important;min-height:calc(100vh - 4px)!important;background:#000!important}" +
+            ".getEmbed iframe,.watch iframe,.watch video{width:100%!important;min-height:80vh!important;border:0!important}';" +
+            "document.documentElement.appendChild(st);" +
+            "var p=document.getElementById('sbOverlay');if(p)p.remove();" +
+            "document.querySelectorAll('a[target=\"_blank\"]').forEach(function(a){a.target='_self'});})();";
 
     private FrameLayout root;
     private LinearLayout chrome;
     private WebView webView;
     private ProgressBar progress;
+    private ContentStateView stateView;
     private View customView;
     private WebChromeClient.CustomViewCallback customCallback;
+    private String currentUrl;
+    private boolean mainFrameFailed;
 
-    @Override protected void onCreate(Bundle state) {
-        super.onCreate(state); setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
-        root = new FrameLayout(this); root.setBackgroundColor(Color.BLACK); setContentView(root);
-        chrome = new LinearLayout(this); chrome.setOrientation(LinearLayout.VERTICAL); root.addView(chrome, match());
-        LinearLayout bar = new LinearLayout(this); bar.setGravity(Gravity.CENTER_VERTICAL); bar.setPadding(dp(10), dp(4), dp(12), dp(4)); bar.setBackgroundColor(Color.rgb(13, 10, 18));
+    @Override
+    protected void onCreate(Bundle state) {
+        super.onCreate(state);
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+        buildUi();
+        configureWebView();
+
+        currentUrl = getIntent().getStringExtra("url");
+        if (!isAllowedUrl(currentUrl)) {
+            finish();
+            return;
+        }
+        loadWatchPage();
+    }
+
+    private void buildUi() {
+        boolean television = DeviceUtils.isTelevision(this);
+        root = new FrameLayout(this);
+        root.setBackgroundColor(Color.BLACK);
+        setContentView(root);
+
+        chrome = new LinearLayout(this);
+        chrome.setOrientation(LinearLayout.VERTICAL);
+        root.addView(chrome, match());
+
+        LinearLayout bar = new LinearLayout(this);
+        bar.setGravity(Gravity.CENTER_VERTICAL);
+        bar.setPadding(dp(10), dp(4), dp(12), dp(4));
+        bar.setBackgroundColor(Color.rgb(13, 10, 18));
         chrome.addView(bar, new LinearLayout.LayoutParams(-1, dp(50)));
-        Button back = new Button(this); back.setText("رجوع"); back.setAllCaps(false); back.setTextColor(Color.WHITE); back.setBackgroundColor(Color.TRANSPARENT); back.setOnClickListener(v -> onBackPressed()); bar.addView(back, new LinearLayout.LayoutParams(dp(90), -1));
-        TextView title = new TextView(this); title.setText(getIntent().getStringExtra("title")); title.setTextColor(Color.WHITE); title.setTextSize(16); title.setGravity(Gravity.CENTER_VERTICAL | Gravity.RIGHT); title.setMaxLines(1); bar.addView(title, new LinearLayout.LayoutParams(0, -1, 1));
-        TextView brand = new TextView(this); brand.setText("LATCHI PLAY"); brand.setTextColor(Color.rgb(246,198,75)); brand.setTextSize(14); brand.setTypeface(android.graphics.Typeface.DEFAULT_BOLD); brand.setGravity(Gravity.CENTER); bar.addView(brand, new LinearLayout.LayoutParams(dp(130), -1));
-        progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal); progress.setIndeterminate(true); progress.setIndeterminateTintList(android.content.res.ColorStateList.valueOf(Color.rgb(124,58,237))); chrome.addView(progress, new LinearLayout.LayoutParams(-1, dp(3)));
-        webView = new WebView(this); webView.setBackgroundColor(Color.BLACK); chrome.addView(webView, new LinearLayout.LayoutParams(-1,0,1)); configure();
-        String url = getIntent().getStringExtra("url"); if (url == null || !url.startsWith("https://shooflive.net/")) { finish(); return; } webView.loadUrl(url);
-        if (DeviceUtils.isTelevision(this)) back.requestFocus();
+
+        Button back = new Button(this);
+        back.setText(R.string.back);
+        back.setAllCaps(false);
+        back.setTextColor(Color.WHITE);
+        back.setBackgroundColor(Color.TRANSPARENT);
+        back.setFocusable(television);
+        back.setOnClickListener(view -> onBackPressed());
+        bar.addView(back, new LinearLayout.LayoutParams(dp(90), -1));
+
+        TextView title = new TextView(this);
+        title.setText(getIntent().getStringExtra("title"));
+        title.setTextColor(Color.WHITE);
+        title.setTextSize(16);
+        title.setGravity(Gravity.CENTER_VERTICAL | Gravity.RIGHT);
+        title.setMaxLines(1);
+        title.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        bar.addView(title, new LinearLayout.LayoutParams(0, -1, 1));
+
+        TextView brand = new TextView(this);
+        brand.setText(R.string.app_name);
+        brand.setTextColor(Color.rgb(246, 198, 75));
+        brand.setTextSize(14);
+        brand.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        brand.setGravity(Gravity.CENTER);
+        bar.addView(brand, new LinearLayout.LayoutParams(dp(130), -1));
+
+        progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        progress.setIndeterminate(true);
+        progress.setIndeterminateTintList(android.content.res.ColorStateList.valueOf(Color.rgb(124, 58, 237)));
+        chrome.addView(progress, new LinearLayout.LayoutParams(-1, dp(3)));
+
+        FrameLayout content = new FrameLayout(this);
+        chrome.addView(content, new LinearLayout.LayoutParams(-1, 0, 1));
+
+        webView = new WebView(this);
+        webView.setBackgroundColor(Color.BLACK);
+        webView.setVisibility(View.GONE);
+        content.addView(webView, new FrameLayout.LayoutParams(-1, -1));
+
+        stateView = new ContentStateView(this, television);
+        content.addView(stateView, new FrameLayout.LayoutParams(-1, -1));
+        stateView.showMessage(getString(R.string.preparing_watch));
+
+        if (television) back.requestFocus();
     }
 
-    @SuppressWarnings("SetJavaScriptEnabled") private void configure() {
-        WebSettings s=webView.getSettings(); s.setJavaScriptEnabled(true); s.setDomStorageEnabled(true); s.setMediaPlaybackRequiresUserGesture(false); s.setSupportMultipleWindows(false); s.setJavaScriptCanOpenWindowsAutomatically(false); s.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW); s.setUserAgentString(s.getUserAgentString()+" LatchiPlay/3.0");
-        CookieManager.getInstance().setAcceptCookie(true); CookieManager.getInstance().setAcceptThirdPartyCookies(webView,true); CookieManager.getInstance().setCookie("https://shooflive.net/","sb_seen=1; Max-Age=31536000; Path=/; Secure");
-        webView.setWebViewClient(new WebViewClient(){
-            @Override public void onPageStarted(WebView v,String u, Bitmap f){progress.setVisibility(View.VISIBLE);}
-            @Override public void onPageFinished(WebView v,String u){progress.setVisibility(View.GONE);v.evaluateJavascript(CLEAN_PLAYER_JS,null);}
-            @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r){Uri u=r.getUrl(); if(r.isForMainFrame() && u.getHost()!=null && !u.getHost().endsWith("shooflive.net")){Toast.makeText(WatchActivity.this,"تم منع نافذة خارجية",Toast.LENGTH_SHORT).show();return true;}return false;}
+    @SuppressWarnings("SetJavaScriptEnabled")
+    private void configureWebView() {
+        WebSettings settings = webView.getSettings();
+        settings.setJavaScriptEnabled(true);
+        settings.setDomStorageEnabled(true);
+        settings.setMediaPlaybackRequiresUserGesture(false);
+        settings.setSupportMultipleWindows(false);
+        settings.setJavaScriptCanOpenWindowsAutomatically(false);
+        settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
+        settings.setAllowFileAccess(false);
+        settings.setAllowContentAccess(false);
+        settings.setUserAgentString(settings.getUserAgentString() + " LatchiPlay/" + BuildConfig.VERSION_NAME);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) settings.setSafeBrowsingEnabled(true);
+
+        CookieManager cookies = CookieManager.getInstance();
+        cookies.setAcceptCookie(true);
+        cookies.setAcceptThirdPartyCookies(webView, true);
+        cookies.setCookie("https://shooflive.net/", "sb_seen=1; Max-Age=31536000; Path=/; Secure");
+
+        webView.setWebViewClient(new WebViewClient() {
+            @Override
+            public void onPageStarted(WebView view, String url, Bitmap favicon) {
+                mainFrameFailed = false;
+                progress.setVisibility(View.VISIBLE);
+                webView.setVisibility(View.GONE);
+                stateView.showMessage(getString(R.string.preparing_watch));
+            }
+
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                if (mainFrameFailed || isFinishing()) return;
+                progress.setVisibility(View.GONE);
+                stateView.hide();
+                webView.setVisibility(View.VISIBLE);
+                view.evaluateJavascript(CLEAN_PLAYER_JS, null);
+            }
+
+            @Override
+            public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
+                if (request.isForMainFrame()) showWatchError();
+            }
+
+            @Override
+            public void onReceivedHttpError(WebView view, WebResourceRequest request, WebResourceResponse response) {
+                if (request.isForMainFrame() && response.getStatusCode() >= 400) showWatchError();
+            }
+
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                Uri uri = request.getUrl();
+                if (request.isForMainFrame() && !isAllowedHost(uri.getHost())) {
+                    Toast.makeText(WatchActivity.this, R.string.external_window_blocked, Toast.LENGTH_SHORT).show();
+                    return true;
+                }
+                return false;
+            }
         });
-        webView.setWebChromeClient(new WebChromeClient(){
-            @Override public boolean onCreateWindow(WebView v,boolean d,boolean g,android.os.Message m){return false;}
-            @Override public void onShowCustomView(View v,CustomViewCallback cb){if(customView!=null){cb.onCustomViewHidden();return;}customView=v;customCallback=cb;chrome.setVisibility(View.GONE);root.addView(v,match());immersive(true);}
-            @Override public void onHideCustomView(){hideCustom();}
+
+        webView.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture,
+                                          android.os.Message resultMsg) {
+                return false;
+            }
+
+            @Override
+            public void onShowCustomView(View view, CustomViewCallback callback) {
+                if (customView != null) {
+                    callback.onCustomViewHidden();
+                    return;
+                }
+                customView = view;
+                customCallback = callback;
+                chrome.setVisibility(View.GONE);
+                root.addView(view, match());
+                immersive(true);
+            }
+
+            @Override
+            public void onHideCustomView() {
+                hideCustomView();
+            }
         });
     }
-    private void hideCustom(){if(customView==null)return;root.removeView(customView);customView=null;chrome.setVisibility(View.VISIBLE);if(customCallback!=null)customCallback.onCustomViewHidden();customCallback=null;immersive(false);}
-    private void immersive(boolean hide){if(Build.VERSION.SDK_INT>=30){WindowInsetsController c=getWindow().getInsetsController();if(c!=null){if(hide)c.hide(WindowInsets.Type.systemBars());else c.show(WindowInsets.Type.systemBars());}}else getWindow().getDecorView().setSystemUiVisibility(hide?5894:View.SYSTEM_UI_FLAG_VISIBLE);}
-    @Override public void onBackPressed(){if(customView!=null)hideCustom();else if(webView.canGoBack())webView.goBack();else finish();}
-    @Override protected void onDestroy(){if(webView!=null){webView.stopLoading();webView.destroy();}super.onDestroy();}
-    private FrameLayout.LayoutParams match(){return new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.MATCH_PARENT);} private int dp(int v){return Math.round(v*getResources().getDisplayMetrics().density);}
+
+    private void loadWatchPage() {
+        if (!DeviceUtils.hasInternetConnection(this)) {
+            showWatchError();
+            return;
+        }
+        mainFrameFailed = false;
+        progress.setVisibility(View.VISIBLE);
+        webView.setVisibility(View.GONE);
+        stateView.showMessage(getString(R.string.preparing_watch));
+        webView.loadUrl(currentUrl);
+    }
+
+    private void showWatchError() {
+        mainFrameFailed = true;
+        progress.setVisibility(View.GONE);
+        webView.setVisibility(View.GONE);
+        String message = DeviceUtils.hasInternetConnection(this)
+                ? getString(R.string.load_watch_failed)
+                : getString(R.string.no_internet);
+        stateView.showAction(message, getString(R.string.retry), view -> loadWatchPage());
+    }
+
+    private boolean isAllowedUrl(String value) {
+        if (value == null) return false;
+        Uri uri = Uri.parse(value);
+        return "https".equalsIgnoreCase(uri.getScheme()) && isAllowedHost(uri.getHost());
+    }
+
+    private boolean isAllowedHost(String host) {
+        return host != null && (host.equalsIgnoreCase(ALLOWED_HOST) ||
+                host.toLowerCase().endsWith("." + ALLOWED_HOST));
+    }
+
+    private void hideCustomView() {
+        if (customView == null) return;
+        root.removeView(customView);
+        customView = null;
+        chrome.setVisibility(View.VISIBLE);
+        if (customCallback != null) customCallback.onCustomViewHidden();
+        customCallback = null;
+        immersive(false);
+    }
+
+    private void immersive(boolean hide) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            WindowInsetsController controller = getWindow().getInsetsController();
+            if (controller != null) {
+                if (hide) controller.hide(WindowInsets.Type.systemBars());
+                else controller.show(WindowInsets.Type.systemBars());
+            }
+        } else {
+            getWindow().getDecorView().setSystemUiVisibility(hide ? 5894 : View.SYSTEM_UI_FLAG_VISIBLE);
+        }
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (customView != null) hideCustomView();
+        else if (webView.canGoBack()) webView.goBack();
+        else finish();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (webView != null) webView.onResume();
+    }
+
+    @Override
+    protected void onPause() {
+        if (webView != null) webView.onPause();
+        super.onPause();
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (customView != null) hideCustomView();
+        if (webView != null) {
+            webView.stopLoading();
+            webView.setWebChromeClient(null);
+            webView.setWebViewClient(null);
+            webView.removeAllViews();
+            webView.destroy();
+        }
+        super.onDestroy();
+    }
+
+    private FrameLayout.LayoutParams match() {
+        return new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT);
+    }
+
+    private int dp(int value) {
+        return Math.round(value * getResources().getDisplayMetrics().density);
+    }
 }

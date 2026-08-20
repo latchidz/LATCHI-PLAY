@@ -34,6 +34,7 @@ import android.webkit.WebViewClient;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.ScrollView;
@@ -66,17 +67,59 @@ public class MainActivity extends Activity {
     private static final String CLEAN_PAGE_JS =
             "(function(){" +
             "document.cookie='sb_seen=1;path=/;max-age=31536000';" +
+            "document.title=(document.title||'').replace(/شوف لايف/g,'LATCHI PLAY');" +
             "function clean(){" +
-            "var selectors=['#sbOverlay','.sbBox','.sbPopup','script[src*=\"googletagmanager\"]','iframe[src*=\"doubleclick\"]','iframe[src*=\"googlesyndication\"]'];" +
+            "var selectors=['#sbOverlay','.sbBox','.sbPopup','#headerNav','body>footer','.footer','#search.con_search','.share-button-wrapper','.share-popup-overlay','script[src*=\"googletagmanager\"]','iframe[src*=\"doubleclick\"]','iframe[src*=\"googlesyndication\"]'];" +
             "selectors.forEach(function(s){document.querySelectorAll(s).forEach(function(e){e.remove();});});" +
-            "document.querySelectorAll('a[href*=\"t.me/SHOOFVIP\"]').forEach(function(e){e.style.display='none';});" +
+            "document.querySelectorAll('a[href*=\"t.me/SHOOFVIP\"]').forEach(function(e){e.remove();});" +
             "document.querySelectorAll('a[target=\"_blank\"]').forEach(function(e){e.setAttribute('target','_self');});" +
             "}" +
             "clean();" +
-            "var style=document.createElement('style');" +
-            "style.id='latchi-clean-style';" +
-            "style.textContent='#sbOverlay,.sbBox,.sbPopup{display:none!important;visibility:hidden!important;pointer-events:none!important} iframe[src*=doubleclick],iframe[src*=googlesyndication]{display:none!important}';" +
-            "document.documentElement.appendChild(style);" +
+            "if(!document.getElementById('latchi-theme')){" +
+            "var style=document.createElement('style');style.id='latchi-theme';" +
+            "style.textContent=`" +
+            ":root{--lp-bg:#08070d;--lp-surface:#15111d;--lp-raised:#20192c;--lp-purple:#8b5cf6;--lp-gold:#f6c64b;--lp-text:#fffdf8;--lp-muted:#aaa4b4}" +
+            "html,body{background:var(--lp-bg)!important;color:var(--lp-text)!important;min-height:100%!important}" +
+            "body{margin:0!important;padding:0!important;font-family:Arial,sans-serif!important}" +
+            "#headerNav,body>footer,.footer,#sbOverlay,.sbBox,.sbPopup,#search.con_search,.share-button-wrapper,.share-popup-overlay{display:none!important}" +
+            "main{margin:0!important;padding:0!important;background:var(--lp-bg)!important;min-height:100vh!important}" +
+            ".sec-line,.secContainer,.secContainer.bg{background:var(--lp-bg)!important;margin:0!important;padding:12px 0 22px!important}" +
+            ".containers.container-fluid,.container-fluid.containers{width:100%!important;max-width:none!important;padding:0 10px!important;margin:0!important}" +
+            "#load-post,#load-post-movies,#load-post-episodes{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important;width:100%!important}" +
+            "#load-post:before,#load-post:after,#load-post-movies:before,#load-post-movies:after,#load-post-episodes:before,#load-post-episodes:after{display:none!important}" +
+            "article.post,article.postEp{display:block!important;width:100%!important;margin:0!important;padding:0!important;float:none!important}" +
+            "article.post>div,article.postEp>div{display:block!important;width:100%!important;margin:0!important;padding:0!important;float:none!important}" +
+            ".block-post,.poster{position:relative!important;border-radius:16px!important;overflow:hidden!important;background:var(--lp-surface)!important;border:1px solid rgba(139,92,246,.18)!important;box-shadow:0 8px 26px rgba(0,0,0,.32)!important;margin:0!important;transition:transform .18s ease!important}" +
+            ".block-post:active,.poster:active{transform:scale(.98)!important}" +
+            ".posterThumb,.poster.img-cnt{width:100%!important;aspect-ratio:2/3!important;height:auto!important;background:#16121e!important;overflow:hidden!important}" +
+            ".posterThumb img,.poster img,.imgBg,.imgSer{width:100%!important;height:100%!important;object-fit:cover!important;display:block!important}" +
+            ".block-post .title,.poster .title{position:absolute!important;left:0!important;right:0!important;bottom:0!important;margin:0!important;padding:42px 10px 11px!important;min-height:68px!important;background:linear-gradient(transparent,rgba(6,5,10,.96))!important;color:#fff!important;font-size:14px!important;font-weight:700!important;line-height:1.45!important;text-align:right!important}" +
+            ".ribbon,.episodeNum{background:linear-gradient(135deg,var(--lp-purple),#6d28d9)!important;color:#fff!important;border:0!important;border-radius:0 0 0 10px!important;box-shadow:none!important}" +
+            ".pagination{display:flex!important;justify-content:center!important;gap:7px!important;margin:22px 0!important}" +
+            ".pagination a,.pagination span{background:var(--lp-raised)!important;color:#fff!important;border:1px solid rgba(139,92,246,.25)!important;border-radius:10px!important;padding:9px 13px!important}" +
+            ".pagination .current{background:linear-gradient(135deg,var(--lp-purple),#6d28d9)!important;color:#fff!important}" +
+            ".getEmbed,.watch{border-radius:16px!important;overflow:hidden!important;background:#000!important;margin:0 0 14px!important;box-shadow:0 12px 35px rgba(0,0,0,.5)!important}" +
+            ".singleInfo{padding:12px 10px 24px!important;background:var(--lp-bg)!important}" +
+            ".singleSeries{display:flex!important;gap:14px!important;align-items:flex-start!important;background:linear-gradient(145deg,var(--lp-raised),var(--lp-surface))!important;border:1px solid rgba(139,92,246,.22)!important;border-radius:18px!important;padding:14px!important;box-shadow:0 12px 30px rgba(0,0,0,.28)!important}" +
+            ".singleSeries .cover{width:34%!important;min-width:105px!important;border-radius:13px!important;overflow:hidden!important;margin:0!important}" +
+            ".singleSeries .cover img{width:100%!important;height:auto!important;display:block!important}" +
+            ".singleSeries .info{flex:1!important;color:#fff!important;margin:0!important;padding:0!important}" +
+            ".singleSeries h1,.singleSeries h2,.singleSeries .title{color:var(--lp-gold)!important;font-weight:800!important;line-height:1.4!important}" +
+            ".story{background:var(--lp-surface)!important;color:#ddd8e5!important;border-right:3px solid var(--lp-purple)!important;border-radius:12px!important;padding:14px!important;margin-top:13px!important;line-height:1.9!important}" +
+            ".slv2{background:var(--lp-bg)!important;min-height:100vh!important;padding:22px 12px!important}" +
+            ".slv2-top{display:block!important;text-align:right!important;padding:0!important;margin-bottom:15px!important}" +
+            ".slv2-title{color:#fff!important;font-size:24px!important}.slv2-title em,.slv2-title strong{color:var(--lp-gold)!important}" +
+            ".slv2-count{color:var(--lp-muted)!important}" +
+            ".slv2-form{border:1px solid rgba(139,92,246,.55)!important;border-radius:14px!important;overflow:hidden!important;background:var(--lp-surface)!important}" +
+            ".slv2-form button,.slv2-form input[type=submit]{background:linear-gradient(135deg,var(--lp-purple),#6d28d9)!important}" +
+            ".slv2-grid{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:12px!important}" +
+            ".slv2-card{width:100%!important;margin:0!important;color:#fff!important;text-decoration:none!important}" +
+            ".slv2-poster{width:100%!important;aspect-ratio:2/3!important;border-radius:16px!important;overflow:hidden!important;border:1px solid rgba(139,92,246,.22)!important;background:var(--lp-surface)!important}" +
+            ".slv2-poster img{width:100%!important;height:100%!important;object-fit:cover!important}" +
+            ".slv2-badge{background:var(--lp-purple)!important;color:#fff!important}.slv2-name{color:#fff!important;text-align:right!important;font-weight:700!important;padding:8px 3px!important}" +
+            ".block-news{background:var(--lp-surface)!important;border-radius:15px!important;overflow:hidden!important;border:1px solid rgba(139,92,246,.18)!important}" +
+            "@media(min-width:700px){#load-post,#load-post-movies,#load-post-episodes,.slv2-grid{grid-template-columns:repeat(4,minmax(0,1fr))!important}}" +
+            "`;document.documentElement.appendChild(style);}" +
             "new MutationObserver(clean).observe(document.documentElement,{childList:true,subtree:true});" +
             "})();";
 
@@ -90,6 +133,7 @@ public class MainActivity extends Activity {
     private TextView statusText;
     private View customView;
     private WebChromeClient.CustomViewCallback customViewCallback;
+    private UpdateManager updateManager;
     private long lastBackPress;
     private boolean showingNativeHome = true;
 
@@ -101,6 +145,8 @@ public class MainActivity extends Activity {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         buildInterface();
         configureWebView();
+        updateManager = new UpdateManager(this);
+        updateManager.checkAutomatically();
 
         String incoming = getIntent() != null ? getIntent().getDataString() : null;
         if (incoming != null && isShoofHost(Uri.parse(incoming).getHost())) {
@@ -126,13 +172,25 @@ public class MainActivity extends Activity {
         header.setBackgroundColor(SURFACE);
         appChrome.addView(header, new LinearLayout.LayoutParams(-1, dp(58)));
 
+        ImageView brandIcon = new ImageView(this);
+        brandIcon.setImageResource(R.mipmap.ic_launcher);
+        brandIcon.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        brandIcon.setOnClickListener(v -> showNativeHome());
+        LinearLayout.LayoutParams iconParams = new LinearLayout.LayoutParams(dp(40), dp(40));
+        iconParams.setMargins(0, 0, dp(9), 0);
+        header.addView(brandIcon, iconParams);
+
         TextView brand = new TextView(this);
-        brand.setText("LATCHI  PLAY");
+        brand.setText("LATCHI PLAY");
         brand.setTextColor(GOLD);
-        brand.setTextSize(19);
+        brand.setTextSize(18);
         brand.setGravity(Gravity.CENTER_VERTICAL);
         brand.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
         brand.setOnClickListener(v -> showNativeHome());
+        brand.setOnLongClickListener(v -> {
+            if (updateManager != null) updateManager.checkManually();
+            return true;
+        });
         header.addView(brand, new LinearLayout.LayoutParams(0, -1, 1));
 
         statusText = new TextView(this);
@@ -140,7 +198,10 @@ public class MainActivity extends Activity {
         statusText.setTextColor(Color.rgb(74, 222, 128));
         statusText.setTextSize(11);
         statusText.setGravity(Gravity.CENTER);
-        header.addView(statusText, new LinearLayout.LayoutParams(dp(70), -1));
+        statusText.setOnClickListener(v -> {
+            if (updateManager != null) updateManager.checkManually();
+        });
+        header.addView(statusText, new LinearLayout.LayoutParams(dp(64), -1));
 
         Button search = smallButton("بحث");
         search.setOnClickListener(v -> showSearch());
@@ -659,6 +720,7 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         webView.onResume();
+        if (updateManager != null) updateManager.resumePendingInstall();
     }
 
     @Override
@@ -669,6 +731,7 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        if (updateManager != null) updateManager.destroy();
         if (webView != null) {
             webView.stopLoading();
             webView.setWebChromeClient(null);

@@ -25,7 +25,7 @@ workflows:
       - app/build/reports/**/*
 
   android-release-aab:
-    name: LATCHI PLAY - Play Store AAB
+    name: LATCHI PLAY - Signed APK and AAB
     instance_type: mac_mini_m2
     max_build_duration: 60
     environment:
@@ -47,9 +47,12 @@ workflows:
           export CM_KEYSTORE_PATH="$CM_BUILD_DIR/release.keystore"
           echo "$CM_KEYSTORE" | base64 --decode > "$CM_KEYSTORE_PATH"
           chmod +x gradlew
-          ./gradlew clean :app:bundleRelease --stacktrace
+          ./gradlew clean :app:assembleRelease :app:bundleRelease --stacktrace
+          cp app/build/outputs/apk/release/app-release.apk "$CM_BUILD_DIR/LATCHI-PLAY-release.apk"
           cp app/build/outputs/bundle/release/app-release.aab "$CM_BUILD_DIR/LATCHI-PLAY-release.aab"
     artifacts:
+      - LATCHI-PLAY-release.apk
       - LATCHI-PLAY-release.aab
+      - app/build/outputs/apk/release/*.apk
       - app/build/outputs/bundle/release/*.aab
       - app/build/reports/**/*

@@ -10,8 +10,8 @@ android {
         applicationId 'com.latchi.play'
         minSdk 23
         targetSdk 35
-        versionCode 3
-        versionName '2.1.0'
+        versionCode 4
+        versionName '2.2.0'
     }
 
     def keystorePath = System.getenv('CM_KEYSTORE_PATH')
@@ -23,6 +23,7 @@ android {
         if (keystorePath && keystorePassword && keyAliasValue && keyPasswordValue) {
             release {
                 storeFile file(keystorePath)
+                storeType 'PKCS12'
                 storePassword keystorePassword
                 keyAlias keyAliasValue
                 keyPassword keyPasswordValue

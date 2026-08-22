@@ -556,9 +556,9 @@ public class MainActivity extends Activity {
         int visibility = visible ? View.VISIBLE : View.GONE;
         if (heroBox != null) heroBox.setVisibility(visible && heroItem != null
                 ? View.VISIBLE : View.GONE);
-        if (categoriesRow != null && categoriesRow.getParent() != null) {
-            categoriesRow.getParent().setVisibility(visible && categoriesRow.getChildCount() > 0
-                    ? View.VISIBLE : View.GONE);
+        if (categoriesRow != null && categoriesRow.getParent() instanceof View) {
+            ((View) categoriesRow.getParent()).setVisibility(visible
+                    && categoriesRow.getChildCount() > 0 ? View.VISIBLE : View.GONE);
         }
         if (latestMoviesBox != null) {
             latestMoviesBox.setVisibility(visible && latestMoviesAdapter != null
@@ -668,8 +668,8 @@ public class MainActivity extends Activity {
             params.setMargins(dp(3), 0, dp(3), 0);
             categoriesRow.addView(chip, params);
         }
-        if (categoriesRow.getParent() != null) {
-            categoriesRow.getParent().setVisibility(View.VISIBLE);
+        if (categoriesRow.getParent() instanceof View) {
+            ((View) categoriesRow.getParent()).setVisibility(View.VISIBLE);
         }
     }
 

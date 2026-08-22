@@ -66,7 +66,7 @@ public final class TmdbClient {
     }
 
     public void popular(String mediaType, int page, Callback<List<CatalogItem>> callback) {
-        String tv = "tv".equals(mediaType);
+        boolean tv = "tv".equals(mediaType);
         executeList(tv ? "/tv/popular" : "/movie/popular", "page=" + Math.max(1, page),
                 tv ? "tv" : "movie", callback);
     }
@@ -94,7 +94,7 @@ public final class TmdbClient {
         String path = tv ? "/genre/tv/list" : "/genre/movie/list";
         execute(path, "", new JsonTask<List<Genre>>() {
             @Override
-            List<Genre> parse(JSONObject root) throws Exception {
+            public List<Genre> parse(JSONObject root) throws Exception {
                 JSONArray genres = root.optJSONArray("genres");
                 if (genres == null) return Collections.emptyList();
                 List<Genre> result = new ArrayList<>();
@@ -119,7 +119,7 @@ public final class TmdbClient {
         final long id = item.tmdbId;
         execute(tv ? "/tv/" + id : "/movie/" + id, "", new JsonTask<TmdbDetail>() {
             @Override
-            TmdbDetail parse(JSONObject root) throws Exception {
+            public TmdbDetail parse(JSONObject root) throws Exception {
                 return parseDetail(root, tv);
             }
         }, callback);
@@ -134,7 +134,7 @@ public final class TmdbClient {
         final int season = seasonNumber;
         execute("/tv/" + id + "/season/" + season, "", new JsonTask<List<CatalogItem>>() {
             @Override
-            List<CatalogItem> parse(JSONObject root) throws Exception {
+            public List<CatalogItem> parse(JSONObject root) throws Exception {
                 JSONArray episodes = root.optJSONArray("episodes");
                 if (episodes == null) return Collections.emptyList();
                 List<CatalogItem> result = new ArrayList<>();

@@ -272,8 +272,8 @@ public final class SeriesEpisodesPanel extends LinearLayout {
 
     private String episodeTitle(CatalogItem episode) {
         String name = episode.title.trim();
-        if (name.isEmpty()) return getString(R.string.episode_number, episode.episodeNumber);
-        return getString(R.string.episode_number, episode.episodeNumber) + " • " + name;
+        if (name.isEmpty()) return activity.getString(R.string.episode_number, episode.episodeNumber);
+        return activity.getString(R.string.episode_number, episode.episodeNumber) + " • " + name;
     }
 
     private String getStringSeason(int seasonNumber) {

@@ -9,6 +9,7 @@ import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.view.Gravity;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.view.inputmethod.EditorInfo;
 import android.widget.Button;
@@ -138,7 +139,7 @@ public class SearchActivity extends Activity {
         grid.setClipToPadding(false);
         grid.setPadding(dp(television ? 24 : 4), dp(television ? 16 : 5), dp(television ? 24 : 4), dp(24));
         grid.setItemAnimator(null);
-        grid.setDescendantFocusability(View.FOCUS_AFTER_DESCENDANTS);
+        grid.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);
         grid.setLayoutManager(new GridLayoutManager(this, DeviceUtils.catalogColumns(this, television)));
         adapter = new PosterAdapter(television, this::openDetails);
         grid.setAdapter(adapter);

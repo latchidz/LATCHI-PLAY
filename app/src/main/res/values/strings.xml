@@ -58,10 +58,7 @@
     <string name="movie_badge">فيلم</string>
     <string name="series_badge">مسلسل</string>
     <string name="minutes">دقيقة</string>
-    <string name="ended_message">انتهى المحتوى</string>
-    <string name="play_again">تشغيل من جديد</string>
     <string name="history">السجل</string>
-    <string name="continue_watching">متابعة المشاهدة والسجل</string>
     <string name="history_empty">لا يوجد سجل مشاهدة بعد</string>
     <string name="history_remove_hint">ضغط مطوّل للحذف</string>
     <string name="remove_history_title">إزالة من السجل؟</string>

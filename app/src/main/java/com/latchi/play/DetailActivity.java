@@ -18,12 +18,12 @@ import android.widget.TextView;
 
 import com.bumptech.glide.Glide;
 
-import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Movie / series details from TMDB with inline seasons & episodes for series.
- * Playback goes through the provider registry + native ExoPlayer.
+ * Cinematic details screen. Works for TMDB items and for site-provider items
+ * (details + seasons/episodes come from the provider). Playback always goes
+ * through the provider registry + native ExoPlayer.
  */
 public class DetailActivity extends Activity {
     private static final int BG = Color.rgb(7, 6, 12);
@@ -33,14 +33,17 @@ public class DetailActivity extends Activity {
     private CatalogItem item;
     private CatalogItem firstEpisode;
     private FavoritesStore favoritesStore;
-    private SeriesEpisodesPanel episodesPanel;
     private TmdbClient tmdb;
+    private ContentProvider siteProvider;
     private boolean television;
+    private boolean seriesItem;
     private ContentStateView stateView;
     private ProgressBar progress;
     private Button watchButton;
     private Button favoriteButton;
-    private boolean seriesItem;
+    private SeriesEpisodesPanel tmdbEpisodesPanel;
+    private SiteEpisodesPanel siteEpisodesPanel;
+    private LinearLayout body;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -63,12 +66,16 @@ public class DetailActivity extends Activity {
                         "tv".equals(recoveredMedia) ? "series" : "movie",
                         item.seasonNumber, item.episodeNumber, item.metadata,
                         recoveredId, item.overview, item.rating, item.year,
-                        item.backdropUrl, item.genres, recoveredMedia);
+                        item.backdropUrl, item.genres, recoveredMedia,
+                        item.providerId, item.contentId);
             }
         }
         seriesItem = "series".equals(item.type) || "tv".equals(item.mediaType);
         favoritesStore = new FavoritesStore(this);
         tmdb = new TmdbClient(this);
+        if (item.tmdbId <= 0 && !item.providerId.isEmpty()) {
+            siteProvider = ProviderRegistry.byId(this, item.providerId);
+        }
         buildChrome();
         loadDetails();
     }
@@ -90,14 +97,42 @@ public class DetailActivity extends Activity {
     }
 
     private void loadDetails() {
-        // Items from web-site providers have no TMDB id; render from their own data.
+        // Site-provider item (no TMDB id): ask the provider for rich details.
+        if (item.tmdbId <= 0 && siteProvider != null) {
+            progress.setVisibility(View.VISIBLE);
+            siteProvider.details(item, new ContentProvider.DetailsCallback() {
+                @Override
+                public void onSuccess(MediaDetail detail) {
+                    runOnUiThread(() -> {
+                        progress.setVisibility(View.GONE);
+                        if (isFinishing() || isDestroyed()) return;
+                        buildContent(title(detail), poster(detail), backdrop(detail),
+                                metaLine(detail.year, detail.rating, detail.genres,
+                                        detail.durationMinutes, detail.ratingCount),
+                                detail.description, detail.genres, detail.cast,
+                                detail.director);
+                        attachSiteEpisodes();
+                    });
+                }
+
+                @Override
+                public void onError() {
+                    runOnUiThread(() -> {
+                        progress.setVisibility(View.GONE);
+                        if (isFinishing() || isDestroyed()) return;
+                        buildContent(item.title, item.imageUrl, item.backdropUrl,
+                                metaLine(item.year, item.rating, item.genres, 0, 0),
+                                item.overview, item.genres, null, "");
+                        attachSiteEpisodes();
+                    });
+                }
+            });
+            return;
+        }
         if (item.tmdbId <= 0) {
-            TmdbDetail synthetic = new TmdbDetail(0L,
-                    seriesItem ? "tv" : "movie",
-                    item.title, item.overview, item.rating, item.year, item.genres,
-                    item.imageUrl, item.backdropUrl, 0,
-                    new ArrayList<>());
-            buildContent(synthetic);
+            buildContent(item.title, item.imageUrl, item.backdropUrl, "", item.overview,
+                    item.genres, null, "");
+            attachSiteEpisodes();
             return;
         }
         if (!tmdb.isConfigured()) {
@@ -113,7 +148,13 @@ public class DetailActivity extends Activity {
                 runOnUiThread(() -> {
                     progress.setVisibility(View.GONE);
                     if (isFinishing() || isDestroyed()) return;
-                    buildContent(detail);
+                    buildContent(detail.title.isEmpty() ? item.title : detail.title,
+                            detail.posterUrl.isEmpty() ? item.imageUrl : detail.posterUrl,
+                            detail.backdropUrl.isEmpty() ? item.backdropUrl : detail.backdropUrl,
+                            metaLine(detail.year, detail.rating, detail.genres,
+                                    detail.runtimeMinutes, 0),
+                            detail.overview, detail.genres, null, "");
+                    attachSeasons(detail.seasons);
                 });
             }
 
@@ -128,71 +169,103 @@ public class DetailActivity extends Activity {
         });
     }
 
-    private void buildContent(TmdbDetail detail) {
+    private String title(MediaDetail detail) {
+        return detail.title.isEmpty() ? item.title : detail.title;
+    }
+
+    private String poster(MediaDetail detail) {
+        return detail.posterUrl.isEmpty() ? item.imageUrl : detail.posterUrl;
+    }
+
+    private String backdrop(MediaDetail detail) {
+        if (!detail.backdropUrl.isEmpty()) return detail.backdropUrl;
+        return detail.posterUrl.isEmpty() ? item.backdropUrl : detail.posterUrl;
+    }
+
+    private String metaLine(String year, float rating, String genres, int runtimeMinutes,
+                            int ratingCount) {
+        StringBuilder line = new StringBuilder();
+        if (year != null && !year.isEmpty()) line.append(year);
+        if (rating > 0f) {
+            if (line.length() > 0) line.append("   •   ");
+            line.append("★ ").append(String.format(java.util.Locale.US, "%.1f", rating));
+        }
+        if (ratingCount > 0) {
+            line.append("  (").append(ratingCount).append(")");
+        }
+        if (runtimeMinutes > 0) {
+            if (line.length() > 0) line.append("   •   ");
+            line.append(runtimeMinutes).append(" ").append(getString(R.string.minutes));
+        }
+        if (genres != null && !genres.isEmpty()) {
+            if (line.length() > 0) line.append("   •   ");
+            line.append(genres);
+        }
+        return line.toString();
+    }
+
+    private void buildContent(String title, String posterUrl, String backdropUrl,
+                              String meta, String description, String genres,
+                              List<String> cast, String director) {
         stateView.hide();
 
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
         scroll.setBackgroundColor(BG);
-        FrameLayout.LayoutParams scrollParams = new FrameLayout.LayoutParams(-1, -1);
-        scrollParams.topMargin = dp(3);
+        scroll.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
         setContentView(scroll);
 
         LinearLayout root = new LinearLayout(this);
-        root.setOrientation(television ? LinearLayout.HORIZONTAL : LinearLayout.VERTICAL);
-        root.setPadding(dp(television ? 42 : 18), dp(television ? 26 : 16),
-                dp(television ? 42 : 18), dp(30));
-        root.setGravity(television ? Gravity.CENTER_VERTICAL : Gravity.TOP);
+        root.setOrientation(LinearLayout.VERTICAL);
         root.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
         scroll.addView(root, new ScrollView.LayoutParams(-1, -1));
 
-        String poster = detail.posterUrl.isEmpty() ? item.imageUrl : detail.posterUrl;
-        ImageView posterView = new ImageView(this);
-        posterView.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        posterView.setBackground(round(Color.rgb(25, 20, 34), dp(20), Color.rgb(78, 56, 104)));
-        posterView.setContentDescription(detail.title);
-        posterView.setClipToOutline(true);
-        Glide.with(this).load(poster).centerCrop().into(posterView);
-        LinearLayout.LayoutParams posterParams = television
-                ? new LinearLayout.LayoutParams(dp(300), dp(440))
-                : new LinearLayout.LayoutParams(-1, dp(400));
-        posterParams.setMargins(television ? dp(32) : 0, 0, 0, dp(18));
-        root.addView(posterView, posterParams);
+        // ---------------- Header (backdrop + gradient + info) ----------------
+        FrameLayout header = new FrameLayout(this);
+        int headerHeight = dp(television ? 470 : 320);
+        root.addView(header, new LinearLayout.LayoutParams(-1, headerHeight));
 
-        LinearLayout info = new LinearLayout(this);
-        info.setOrientation(LinearLayout.VERTICAL);
-        info.setGravity(Gravity.RIGHT);
-        info.setPadding(dp(television ? 28 : 4), dp(television ? 18 : 8),
-                dp(television ? 28 : 4), dp(18));
-        root.addView(info, television ? new LinearLayout.LayoutParams(0, -2, 1)
-                : new LinearLayout.LayoutParams(-1, -2));
+        ImageView backdrop = new ImageView(this);
+        backdrop.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        backdrop.setBackgroundColor(Color.rgb(16, 13, 24));
+        header.addView(backdrop, new FrameLayout.LayoutParams(-1, -1));
+        Glide.with(this).load(backdropUrl)
+                .placeholder(android.R.color.darker_gray)
+                .error(android.R.color.darker_gray)
+                .centerCrop()
+                .into(backdrop);
+
+        View gradient = new View(this);
+        gradient.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{Color.TRANSPARENT, Color.argb(60, 0, 0, 0), Color.rgb(7, 6, 12)}));
+        header.addView(gradient, new FrameLayout.LayoutParams(-1, -1));
+
+        LinearLayout headerInfo = new LinearLayout(this);
+        headerInfo.setOrientation(LinearLayout.VERTICAL);
+        headerInfo.setGravity(Gravity.RIGHT);
+        headerInfo.setPadding(dp(television ? 42 : 18), dp(24), dp(television ? 42 : 18), dp(18));
+        header.addView(headerInfo, new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM));
 
         TextView badge = text(seriesItem ? getString(R.string.series_badge)
-                : getString(R.string.movie_badge), television ? 16 : 13, GOLD, true);
-        info.addView(badge, new LinearLayout.LayoutParams(-1, -2));
+                : getString(R.string.movie_badge), television ? 15 : 12, GOLD, true);
+        headerInfo.addView(badge, new LinearLayout.LayoutParams(-1, -2));
 
-        TextView title = text(detail.title.isEmpty() ? item.title : detail.title,
-                television ? 34 : 25, Color.WHITE, true);
-        title.setGravity(Gravity.RIGHT);
-        title.setPadding(0, dp(10), 0, dp(4));
-        info.addView(title, new LinearLayout.LayoutParams(-1, -2));
+        TextView titleView = text(title, television ? 38 : 26, Color.WHITE, true);
+        titleView.setGravity(Gravity.RIGHT);
+        titleView.setPadding(0, dp(6), 0, dp(4));
+        headerInfo.addView(titleView, new LinearLayout.LayoutParams(-1, -2));
 
-        String metaText = metaLine(detail);
-        if (!metaText.isEmpty()) {
-            TextView meta = text(metaText, television ? 17 : 14, GOLD, false);
-            meta.setGravity(Gravity.RIGHT);
-            meta.setPadding(0, dp(4), 0, dp(10));
-            info.addView(meta, new LinearLayout.LayoutParams(-1, -2));
+        if (meta != null && !meta.isEmpty()) {
+            TextView metaView = text(meta, television ? 17 : 13, Color.rgb(214, 208, 224), false);
+            metaView.setGravity(Gravity.RIGHT);
+            metaView.setPadding(0, dp(2), 0, dp(10));
+            headerInfo.addView(metaView, new LinearLayout.LayoutParams(-1, -2));
         }
 
-        if (!detail.overview.isEmpty()) {
-            TextView overview = text(detail.overview, television ? 18 : 15,
-                    Color.rgb(216, 210, 224), false);
-            overview.setGravity(Gravity.RIGHT);
-            overview.setLineSpacing(0, 1.3f);
-            overview.setPadding(0, dp(6), 0, dp(12));
-            info.addView(overview, new LinearLayout.LayoutParams(-1, -2));
-        }
+        LinearLayout buttons = new LinearLayout(this);
+        buttons.setGravity(Gravity.RIGHT);
+        buttons.setOrientation(LinearLayout.HORIZONTAL);
+        headerInfo.addView(buttons, new LinearLayout.LayoutParams(-1, -2));
 
         watchButton = button(seriesItem ? getString(R.string.play_first_episode)
                 : getString(R.string.watch_now), PURPLE);
@@ -206,9 +279,9 @@ public class DetailActivity extends Activity {
             watchButton.setOnClickListener(view -> openEpisode(item, null));
         }
         LinearLayout.LayoutParams watchParams = new LinearLayout.LayoutParams(
-                television ? dp(280) : -1, dp(television ? 64 : 56));
-        watchParams.setMargins(0, dp(24), 0, dp(10));
-        info.addView(watchButton, watchParams);
+                television ? dp(280) : 0, dp(television ? 64 : 54), television ? 0 : 1);
+        watchParams.setMargins(0, dp(8), 0, 0);
+        buttons.addView(watchButton, watchParams);
 
         favoriteButton = button(favoriteLabel(favoritesStore.isFavorite(item)),
                 Color.rgb(34, 28, 45));
@@ -216,66 +289,116 @@ public class DetailActivity extends Activity {
             boolean favorite = favoritesStore.toggle(item);
             favoriteButton.setText(favoriteLabel(favorite));
         });
-        info.addView(favoriteButton, new LinearLayout.LayoutParams(television ? dp(280) : -1,
-                dp(television ? 58 : 52)));
+        LinearLayout.LayoutParams favParams = new LinearLayout.LayoutParams(
+                television ? dp(240) : 0, dp(television ? 64 : 54), television ? 0 : 1);
+        favParams.setMargins(television ? dp(14) : 0, dp(8), 0, 0);
+        buttons.addView(favoriteButton, favParams);
 
+        // ---------------- Body ----------------
+        body = new LinearLayout(this);
+        body.setOrientation(LinearLayout.VERTICAL);
+        body.setGravity(Gravity.RIGHT);
+        body.setPadding(dp(television ? 42 : 18), dp(television ? 30 : 20),
+                dp(television ? 42 : 18), dp(40));
+        root.addView(body, new LinearLayout.LayoutParams(-1, -2));
+
+        if (description != null && !description.isEmpty()) {
+            addSection(body, getString(R.string.story));
+            TextView story = text(description, television ? 18 : 15,
+                    Color.rgb(216, 210, 224), false);
+            story.setGravity(Gravity.RIGHT);
+            story.setLineSpacing(0, 1.35f);
+            body.addView(story, new LinearLayout.LayoutParams(-1, -2));
+        }
+
+        if (cast != null && !cast.isEmpty()) {
+            addSection(body, getString(R.string.cast));
+            TextView castView = text(String.join("  •  ", cast), television ? 17 : 14,
+                    Color.rgb(190, 182, 200), false);
+            castView.setGravity(Gravity.RIGHT);
+            body.addView(castView, new LinearLayout.LayoutParams(-1, -2));
+        }
+        if (director != null && !director.isEmpty()) {
+            addSection(body, getString(R.string.director));
+            TextView directorView = text(director, television ? 17 : 14,
+                    Color.rgb(190, 182, 200), false);
+            directorView.setGravity(Gravity.RIGHT);
+            body.addView(directorView, new LinearLayout.LayoutParams(-1, -2));
+        }
+
+        // Back button for TV/home convenience.
         Button back = button(getString(R.string.back), Color.rgb(24, 20, 32));
         back.setOnClickListener(v -> finish());
         LinearLayout.LayoutParams backParams = new LinearLayout.LayoutParams(
                 television ? dp(180) : -1, dp(television ? 54 : 48));
-        backParams.setMargins(0, dp(10), 0, 0);
-        info.addView(back, backParams);
+        backParams.setMargins(0, dp(6), 0, 0);
+        body.addView(back, backParams);
 
-        if (seriesItem && item.tmdbId <= 0) {
-            TextView note = text(getString(R.string.site_series_note),
-                    television ? 15 : 13, Color.rgb(175, 167, 190), false);
-            note.setGravity(Gravity.RIGHT);
-            note.setPadding(0, dp(14), 0, dp(6));
-            info.addView(note, new LinearLayout.LayoutParams(-1, -2));
-        } else if (seriesItem) {
-            episodesPanel = new SeriesEpisodesPanel(this, television, item.tmdbId,
-                    detail.seasons, new SeriesEpisodesPanel.Listener() {
-                @Override
-                public void onReady(List<CatalogItem> episodes) {
-                    firstEpisode = null;
-                    for (CatalogItem episode : episodes) {
-                        if (firstEpisode == null || compareEpisodes(episode, firstEpisode) < 0) {
-                            firstEpisode = episode;
-                        }
-                    }
-                    if (firstEpisode != null) {
-                        watchButton.setEnabled(true);
-                        watchButton.setAlpha(1f);
-                        if (television) watchButton.requestFocus();
-                    }
-                }
-
-                @Override
-                public void onEpisodeSelected(CatalogItem episode, CatalogItem nextEpisode) {
-                    openEpisode(episode, nextEpisode);
-                }
-            });
-            info.addView(episodesPanel, new LinearLayout.LayoutParams(-1, -2));
-        }
         if (television && !seriesItem) watchButton.requestFocus();
     }
 
-    private String metaLine(TmdbDetail detail) {
-        StringBuilder line = new StringBuilder();
-        if (!detail.year.isEmpty()) line.append(detail.year);
-        if (detail.rating > 0f) {
-            if (line.length() > 0) line.append("  •  ");
-            line.append("★ ").append(String.format(java.util.Locale.US, "%.1f", detail.rating));
-        }
-        if (!detail.genres.isEmpty()) {
-            if (line.length() > 0) line.append("  •  ");
-            line.append(detail.genres);
-        }
-        if (detail.runtimeMinutes > 0) {
-            if (line.length() > 0) line.append("  •  ");
-            line.append(detail.runtimeMinutes).append(" ").append(getString(R.string.minutes));
-        }
-        return line.toString();
+    private void addSection(LinearLayout body, String heading) {
+        TextView label = text(heading, television ? 20 : 17, GOLD, true);
+        label.setGravity(Gravity.RIGHT);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
+        params.setMargins(0, dp(18), 0, dp(8));
+        body.addView(label, params);
+    }
+
+    /** Attaches TMDB seasons/episodes (series items from TMDB). */
+    private void attachSeasons(List<TmdbDetail.TmdbSeason> seasons) {
+        if (!seriesItem || body == null) return;
+        tmdbEpisodesPanel = new SeriesEpisodesPanel(this, television, item.tmdbId,
+                seasons, new SeriesEpisodesPanel.Listener() {
+            @Override
+            public void onReady(List<CatalogItem> episodes) {
+                firstEpisode = null;
+                for (CatalogItem episode : episodes) {
+                    if (firstEpisode == null || compareEpisodes(episode, firstEpisode) < 0) {
+                        firstEpisode = episode;
+                    }
+                }
+                if (firstEpisode != null) {
+                    watchButton.setEnabled(true);
+                    watchButton.setAlpha(1f);
+                    if (television) watchButton.requestFocus();
+                }
+            }
+
+            @Override
+            public void onEpisodeSelected(CatalogItem episode, CatalogItem nextEpisode) {
+                openEpisode(episode, nextEpisode);
+            }
+        });
+        body.addView(tmdbEpisodesPanel, new LinearLayout.LayoutParams(-1, -2));
+    }
+
+    /** Attaches site-provider seasons/episodes. */
+    private void attachSiteEpisodes() {
+        if (!seriesItem || siteProvider == null || body == null) return;
+        siteEpisodesPanel = new SiteEpisodesPanel(this, television, siteProvider, item,
+                new SiteEpisodesPanel.Listener() {
+            @Override
+            public void onReady(List<CatalogItem> episodes) {
+                firstEpisode = null;
+                for (CatalogItem episode : episodes) {
+                    if (firstEpisode == null || compareEpisodes(episode, firstEpisode) < 0) {
+                        firstEpisode = episode;
+                    }
+                }
+                if (firstEpisode != null) {
+                    watchButton.setEnabled(true);
+                    watchButton.setAlpha(1f);
+                    if (television) watchButton.requestFocus();
+                }
+            }
+
+            @Override
+            public void onEpisodeSelected(CatalogItem episode, CatalogItem nextEpisode) {
+                openEpisode(episode, nextEpisode);
+            }
+        });
+        body.addView(siteEpisodesPanel, new LinearLayout.LayoutParams(-1, -2));
     }
 
     private int compareEpisodes(CatalogItem left, CatalogItem right) {
@@ -335,7 +458,7 @@ public class DetailActivity extends Activity {
 
     @Override
     protected void onDestroy() {
-        if (episodesPanel != null) episodesPanel.destroy();
+        if (tmdbEpisodesPanel != null) tmdbEpisodesPanel.destroy();
         if (tmdb != null) tmdb.destroy();
         super.onDestroy();
     }

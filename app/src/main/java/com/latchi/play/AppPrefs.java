@@ -27,6 +27,14 @@ public final class AppPrefs {
         prefs.edit().putBoolean("auto_next", enabled).apply();
     }
 
+    public boolean resumePlayback() {
+        return prefs.getBoolean("resume_playback", true);
+    }
+
+    public void setResumePlayback(boolean enabled) {
+        prefs.edit().putBoolean("resume_playback", enabled).apply();
+    }
+
     public String getTmdbKey() {
         return prefs.getString("tmdb_key", "").trim();
     }

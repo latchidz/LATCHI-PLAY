@@ -108,10 +108,20 @@
     <!-- Settings playback / app -->
     <string name="playback_section">التشغيل</string>
     <string name="auto_next_label">التشغيل التلقائي للحلقة التالية</string>
+    <string name="resume_playback_label">استئناف المشاهدة من آخر موضع</string>
     <string name="app_section">التطبيق</string>
     <string name="clear_history">مسح السجل</string>
     <string name="clear_history_title">مسح سجل المشاهدة؟</string>
     <string name="clear_history_confirm">سيتم حذف كل سجل المشاهدة ومتابعة المشاهدة من هذا الجهاز.</string>
     <string name="history_cleared">تم مسح السجل</string>
     <string name="about_line">LATCHI PLAY • الإصدار %1$s (رقم %2$d)</string>
+
+    <!-- Details / home -->
+    <string name="story">القصة</string>
+    <string name="cast">بطولة</string>
+    <string name="director">إخراج</string>
+    <string name="details">التفاصيل</string>
+    <string name="latest_movies">أحدث الأفلام</string>
+    <string name="latest_series">أحدث المسلسلات</string>
+    <string name="search_prompt">اكتب اسم فيلم أو مسلسل للبحث في كل المصادر</string>
 </resources>

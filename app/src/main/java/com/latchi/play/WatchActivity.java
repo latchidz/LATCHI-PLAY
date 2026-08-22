@@ -203,6 +203,7 @@ public class WatchActivity extends Activity {
         cancelAutoNext();
 
         playbackController.prepare(currentItem.pageUrl, source.url, source.type, source.headers,
+                prefs.resumePlayback(),
                 new PlaybackController.Callback() {
                     @Override
                     public void onBuffering() {

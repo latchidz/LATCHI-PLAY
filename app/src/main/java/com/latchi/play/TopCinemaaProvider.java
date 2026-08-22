@@ -2,8 +2,11 @@ package com.latchi.play;
 
 import android.content.Context;
 
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -19,10 +22,10 @@ import java.util.regex.Pattern;
 /**
  * TopCinemaa provider (https://topcinemaa.co).
  *
- * Catalog: parsed from the public WordPress HTML (posters + titles + links).
- * Playback: only direct media URLs literally present in the public HTML are used;
- * the site serves its real stream through a protected third-party embed
- * (down.vidtube.one) which we deliberately do not follow or decrypt.
+ * Catalog, details and season/episode listings come from the public WordPress
+ * HTML (posters, titles, links, og meta). Playback uses only direct media URLs
+ * literally present in the public HTML; the site's real stream sits behind a
+ * protected embed (down.vidtube.one) that we deliberately do not follow.
  */
 public final class TopCinemaaProvider implements ContentProvider {
     public static final String ID = "topcinemaa";
@@ -34,6 +37,38 @@ public final class TopCinemaaProvider implements ContentProvider {
             Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
     private static final Pattern NEXT_PAGE = Pattern.compile(
             "href=\"https://topcinemaa\\.co/page/(\\d+)/\"", Pattern.CASE_INSENSITIVE);
+    private static final Pattern ALL_HREFS = Pattern.compile(
+            "href=\"(https://topcinemaa\\.co/[^\"]+)\"", Pattern.CASE_INSENSITIVE);
+    private static final Pattern SEASON_CARD = Pattern.compile(
+            "Small--Box Season.{0,400}?<span>الموسم</span>(\\d+).{0,600}?data-src=\"([^\"]+)\"",
+            Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+
+    private static final Map<String, Integer> AR_SEASON = new LinkedHashMap<>();
+
+    static {
+        AR_SEASON.put("الاول", 1);
+        AR_SEASON.put("الأول", 1);
+        AR_SEASON.put("الثاني", 2);
+        AR_SEASON.put("الثاني", 2);
+        AR_SEASON.put("الثالث", 3);
+        AR_SEASON.put("الرابع", 4);
+        AR_SEASON.put("الخامس", 5);
+        AR_SEASON.put("السادس", 6);
+        AR_SEASON.put("السابع", 7);
+        AR_SEASON.put("الثامن", 8);
+        AR_SEASON.put("التاسع", 9);
+        AR_SEASON.put("العاشر", 10);
+        AR_SEASON.put("الحادي عشر", 11);
+        AR_SEASON.put("الثاني عشر", 12);
+        AR_SEASON.put("الثالث عشر", 13);
+        AR_SEASON.put("الرابع عشر", 14);
+        AR_SEASON.put("الخامس عشر", 15);
+        AR_SEASON.put("السادس عشر", 16);
+        AR_SEASON.put("السابع عشر", 17);
+        AR_SEASON.put("الثامن عشر", 18);
+        AR_SEASON.put("التاسع عشر", 19);
+        AR_SEASON.put("العشرون", 20);
+    }
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final AtomicBoolean destroyed = new AtomicBoolean(false);
@@ -117,28 +152,22 @@ public final class TopCinemaaProvider implements ContentProvider {
             String image = matcher.group(3).trim();
             if (title.isEmpty() || !seen.add(link)) continue;
 
-            String lower = link.toLowerCase(Locale.US);
-            String type = lower.contains("%d9%85%d8%b3%d9%84%d8%b3%d9%84") || lower.contains("series")
-                    ? "series" : "movie";
-            if (lower.contains("%d8%a7%d9%86%d9%85%d9%8a") || lower.contains("anime")) {
-                type = "series";
-            }
+            String type = classify(title, link);
             if (!typeFilter.isEmpty() && !type.equals(typeFilter)) continue;
 
-            int season = 0;
-            int episode = 0;
-            Matcher seasonMatcher = Pattern.compile("الموسم[^\\d]{0,4}(\\d+)").matcher(title);
-            if (seasonMatcher.find()) season = Integer.parseInt(seasonMatcher.group(1));
-            Matcher episodeMatcher = Pattern.compile("الحلقة[^\\d]{0,4}(\\d+)").matcher(title);
-            if (episodeMatcher.find()) episode = Integer.parseInt(episodeMatcher.group(1));
-            if (episode > 0 && season <= 0) season = 1;
-
+            int[] se = parseSeasonEpisode(title);
             Map<String, String> meta = new LinkedHashMap<>();
             meta.put("source", "topcinemaa");
-            items.add(new CatalogItem(title, image, link, type, season, episode, meta,
+            items.add(new CatalogItem(title, image, link, type, se[0], se[1], meta,
                     0L, "", 0f, "", "", "", type, ID, link));
         }
         return items;
+    }
+
+    private String classify(String title, String link) {
+        String lower = link.toLowerCase(Locale.US) + " " + title;
+        if (lower.contains("فيلم")) return "movie";
+        return "series";
     }
 
     private boolean hasNextPage(String html, int page) {
@@ -153,6 +182,171 @@ public final class TopCinemaaProvider implements ContentProvider {
         }
         return max > page;
     }
+
+    // ------------------------------------------------------------------ details
+
+    @Override
+    public void details(CatalogItem item, DetailsCallback callback) {
+        if (destroyed.get()) {
+            callback.onError();
+            return;
+        }
+        executor.execute(() -> {
+            try {
+                MediaDetail detail = parseDetails(item);
+                if (destroyed.get()) return;
+                if (detail != null) callback.onSuccess(detail);
+                else callback.onError();
+            } catch (Exception error) {
+                if (!destroyed.get()) callback.onError();
+            }
+        });
+    }
+
+    private MediaDetail parseDetails(CatalogItem item) throws Exception {
+        String page = item.pageUrl;
+        if (page == null || !page.startsWith(BASE)) return null;
+        String html = HtmlFetcher.get(page);
+        String title = SiteMeta.og(html, "og:title");
+        title = title.replaceAll("\\s+(?:توب سينما|اون لاين)$", "").trim();
+        if (title.isEmpty()) title = item.title;
+        String description = SiteMeta.og(html, "og:description");
+        String poster = SiteMeta.og(html, "og:image");
+        float rating = SiteMeta.rating(html);
+        int ratingCount = SiteMeta.ratingCount(html);
+        String year = SiteMeta.year(title + " " + description);
+        String genres = SiteMeta.genres(title + " " + description);
+        List<String> cast = SiteMeta.cast(description);
+        return new MediaDetail(ID, page, item.type, title, "", poster, poster,
+                description, year, rating, ratingCount, genres, "", "", 0, cast, "",
+                "");
+    }
+
+    // ------------------------------------------------------------------ episodes
+
+    @Override
+    public void episodes(CatalogItem item, EpisodesCallback callback) {
+        if (destroyed.get()) {
+            callback.onError();
+            return;
+        }
+        executor.execute(() -> {
+            try {
+                List<SeasonGroup> seasons = parseEpisodes(item);
+                if (destroyed.get()) return;
+                if (seasons.isEmpty()) callback.onError();
+                else callback.onSuccess(seasons);
+            } catch (Exception error) {
+                if (!destroyed.get()) callback.onError();
+            }
+        });
+    }
+
+    private List<SeasonGroup> parseEpisodes(CatalogItem item) throws Exception {
+        String page = item.pageUrl;
+        if (page == null || !page.startsWith(BASE)) return Collections.emptyList();
+        String html = HtmlFetcher.get(page);
+        String seriesKey = keyOf(decode(page));
+        if (seriesKey.isEmpty()) return Collections.emptyList();
+
+        Map<Integer, String> seasonPosters = new LinkedHashMap<>();
+        Matcher seasonMatcher = SEASON_CARD.matcher(html);
+        while (seasonMatcher.find()) {
+            try {
+                seasonPosters.put(Integer.parseInt(seasonMatcher.group(1)), seasonMatcher.group(2));
+            } catch (Exception ignored) {
+                // skip malformed season card
+            }
+        }
+
+        Map<Integer, SeasonGroup.Builder> builders = new LinkedHashMap<>();
+        Set<String> seen = new LinkedHashSet<>();
+        Set<String> seenEpisodeKeys = new LinkedHashSet<>();
+        Matcher hrefMatcher = ALL_HREFS.matcher(html);
+        while (hrefMatcher.find()) {
+            String candidate = hrefMatcher.group(1).trim();
+            String decoded = decode(candidate);
+            if (!keyOf(decoded).equals(seriesKey)) continue;
+            if (!seen.add(candidate)) continue;
+            int[] se = parseSeasonEpisode(decoded);
+            if (se[1] <= 0) continue;
+            int season = se[0] > 0 ? se[0] : 1;
+            String episodeKey = season + ":" + se[1];
+            if (!seenEpisodeKeys.add(episodeKey)) continue;
+            SeasonGroup.Builder builder = builders.get(season);
+            if (builder == null) {
+                builder = new SeasonGroup.Builder(season,
+                        "الموسم " + season, seasonPosters.get(season));
+                builders.put(season, builder);
+            }
+            String title = "الحلقة " + se[1];
+            Map<String, String> meta = new LinkedHashMap<>();
+            meta.put("source", "topcinemaa");
+            builder.add(new CatalogItem(title,
+                    seasonPosters.get(season) != null ? seasonPosters.get(season) : item.imageUrl,
+                    candidate, "episode", season, se[1], meta,
+                    0L, "", 0f, "", "", "", "tv", ID, candidate));
+        }
+
+        List<SeasonGroup> result = new ArrayList<>();
+        for (SeasonGroup.Builder builder : builders.values()) {
+            SeasonGroup group = builder.build();
+            if (!group.episodes.isEmpty()) result.add(group);
+        }
+        result.sort(Comparator.comparingInt(g -> g.seasonNumber));
+        return result;
+    }
+
+    /** Removes domain, /series/ prefix and the season/episode suffix to get a series key. */
+    static String keyOf(String decodedUrl) {
+        String p = decodedUrl == null ? "" : decodedUrl;
+        p = p.replaceFirst("^https?://[^/]+/", "");
+        p = p.replaceFirst("^series/", "");
+        int i = p.indexOf("الموسم");
+        if (i > 0) p = p.substring(0, i);
+        p = p.replaceAll("[-/]+$", "");
+        return p.trim();
+    }
+
+    /** Parses [season, episode] from a decoded TopCinemaa URL/title. */
+    static int[] parseSeasonEpisode(String text) {
+        int season = 0;
+        int episode = 0;
+        Matcher epMatcher = Pattern.compile("الحلقة-?\\s*(\\d+)").matcher(text);
+        if (epMatcher.find()) {
+            try {
+                episode = Integer.parseInt(epMatcher.group(1));
+            } catch (Exception ignored) {
+                // not a number
+            }
+        }
+        Matcher seasonMatcher = Pattern.compile("الموسم-?\\s*([^-\\d\\s]+|\\d+)").matcher(text);
+        if (seasonMatcher.find()) {
+            String value = seasonMatcher.group(1).trim();
+            Integer ordinal = AR_SEASON.get(value);
+            if (ordinal != null) {
+                season = ordinal;
+            } else {
+                try {
+                    season = Integer.parseInt(value);
+                } catch (Exception ignored) {
+                    // not a number
+                }
+            }
+        }
+        if (episode > 0 && season <= 0) season = 1;
+        return new int[]{season, episode};
+    }
+
+    private static String decode(String value) {
+        try {
+            return URLDecoder.decode(value, StandardCharsets.UTF_8.name());
+        } catch (Exception error) {
+            return value;
+        }
+    }
+
+    // ------------------------------------------------------------------ playback
 
     @Override
     public void resolve(CatalogItem item, Callback callback) {
@@ -172,19 +366,16 @@ public final class TopCinemaaProvider implements ContentProvider {
         });
     }
 
-    /** Checks the public item page (and the public embedScreen view) for direct media only. */
     private PlaybackSource resolveFromPages(CatalogItem item) throws Exception {
         String page = item.pageUrl;
-        if (page == null || !page.startsWith("https://topcinemaa.co/")) {
-            return null;
-        }
+        if (page == null || !page.startsWith(BASE)) return null;
         List<String> media = HtmlFetcher.findDirectMedia(HtmlFetcher.get(page));
         if (media.isEmpty()) {
             String embedScreen = page + (page.contains("?") ? "&" : "?") + "embedScreen=true";
             try {
                 media = HtmlFetcher.findDirectMedia(HtmlFetcher.get(embedScreen));
             } catch (Exception ignored) {
-                // The embedScreen view is often an embed page; if it is not readable, give up.
+                // Embed page not readable — give up (no bypass).
             }
         }
         for (String candidate : media) {

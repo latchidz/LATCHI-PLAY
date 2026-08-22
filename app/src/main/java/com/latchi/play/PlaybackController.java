@@ -43,6 +43,11 @@ public final class PlaybackController {
 
     public void prepare(String contentKey, String url, String type, Map<String, String> headers,
                         Callback callback) {
+        prepare(contentKey, url, type, headers, true, callback);
+    }
+
+    public void prepare(String contentKey, String url, String type, Map<String, String> headers,
+                        boolean resumePosition, Callback callback) {
         releasePlayer(false);
         this.callback = callback;
         this.contentKey = contentKey;
@@ -96,8 +101,10 @@ public final class PlaybackController {
         if (mimeType != null) media.setMimeType(mimeType);
         player.setMediaItem(media.build());
 
-        long savedPosition = positions.getLong(contentKey, 0L);
-        if (savedPosition >= MIN_RESUME_POSITION_MS) player.seekTo(savedPosition);
+        if (resumePosition) {
+            long savedPosition = positions.getLong(contentKey, 0L);
+            if (savedPosition >= MIN_RESUME_POSITION_MS) player.seekTo(savedPosition);
+        }
         player.prepare();
         player.play();
     }

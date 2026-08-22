@@ -22,10 +22,10 @@ public class SplashActivity extends Activity {
 
         FrameLayout root = new FrameLayout(this); root.setBackgroundColor(Color.BLACK); setContentView(root);
         ImageView background = new ImageView(this); background.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        background.setImageResource(tv ? R.drawable.splash_tv_v4 : R.drawable.splash_phone_v4); root.addView(background, match());
+        background.setImageResource(R.drawable.splash_bg_v5); root.addView(background, match());
         View shade = new View(this); shade.setBackgroundColor(Color.argb(55,0,0,0)); root.addView(shade, match());
 
-        ImageView glow = new ImageView(this); glow.setImageResource(R.drawable.splash_glow_v4); glow.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        ImageView glow = new ImageView(this); glow.setImageResource(R.drawable.splash_glow_v5); glow.setScaleType(ImageView.ScaleType.CENTER_CROP);
         FrameLayout.LayoutParams gp = new FrameLayout.LayoutParams(dp(tv?330:245),dp(tv?330:245),Gravity.CENTER); gp.bottomMargin=dp(tv?35:75); root.addView(glow,gp);
         ImageView icon = new ImageView(this); icon.setImageResource(R.mipmap.ic_launcher); icon.setScaleType(ImageView.ScaleType.CENTER_CROP);
         FrameLayout.LayoutParams ip = new FrameLayout.LayoutParams(dp(tv?170:132),dp(tv?170:132),Gravity.CENTER); ip.bottomMargin=dp(tv?35:75); root.addView(icon,ip);

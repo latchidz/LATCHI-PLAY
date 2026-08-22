@@ -35,6 +35,7 @@ public class SettingsActivity extends Activity {
     private EditText peertubeInstance;
     private Button providerButton;
     private android.widget.Switch autoNextSwitch;
+    private android.widget.Switch resumeSwitch;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -162,6 +163,28 @@ public class SettingsActivity extends Activity {
         autoNextText.setGravity(Gravity.RIGHT | Gravity.CENTER_VERTICAL);
         autoNextRow.addView(autoNextText, new LinearLayout.LayoutParams(0, -1, 1));
 
+        LinearLayout resumeRow = new LinearLayout(this);
+        resumeRow.setGravity(Gravity.CENTER_VERTICAL);
+        resumeRow.setOrientation(LinearLayout.HORIZONTAL);
+        resumeRow.setBackground(pill(SURFACE, dp(12), Color.rgb(58, 48, 74)));
+        LinearLayout.LayoutParams resumeRowParams = new LinearLayout.LayoutParams(-1,
+                dp(television ? 58 : 52));
+        resumeRowParams.setMargins(0, dp(8), 0, 0);
+        root.addView(resumeRow, resumeRowParams);
+
+        resumeSwitch = new android.widget.Switch(this);
+        resumeSwitch.setChecked(prefs.resumePlayback());
+        resumeSwitch.setFocusable(television);
+        LinearLayout.LayoutParams resumeSwitchParams = new LinearLayout.LayoutParams(
+                dp(television ? 90 : 70), -1);
+        resumeSwitchParams.setMargins(dp(10), 0, dp(6), 0);
+        resumeRow.addView(resumeSwitch, resumeSwitchParams);
+
+        TextView resumeText = text(getString(R.string.resume_playback_label),
+                television ? 16 : 14, Color.WHITE, false);
+        resumeText.setGravity(Gravity.RIGHT | Gravity.CENTER_VERTICAL);
+        resumeRow.addView(resumeText, new LinearLayout.LayoutParams(0, -1, 1));
+
         // ---- App section ----
         TextView appLabel = text(getString(R.string.app_section), television ? 18 : 15,
                 Color.WHITE, true);
@@ -273,6 +296,7 @@ public class SettingsActivity extends Activity {
         prefs.setXtreamPassword(xtreamPassword.getText().toString());
         prefs.setPeerTubeInstance(peertubeInstance.getText().toString());
         prefs.setAutoNext(autoNextSwitch.isChecked());
+        prefs.setResumePlayback(resumeSwitch.isChecked());
         Toast.makeText(this, R.string.settings_saved, Toast.LENGTH_SHORT).show();
         finish();
     }

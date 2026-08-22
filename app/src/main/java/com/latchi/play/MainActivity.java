@@ -6,14 +6,11 @@ import android.content.Intent;
 import android.content.pm.ActivityInfo;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
-import android.net.Uri;
 import android.os.Bundle;
 import android.view.Gravity;
 import android.view.View;
 import android.view.WindowManager;
-import android.view.inputmethod.EditorInfo;
 import android.widget.Button;
-import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
@@ -23,6 +20,8 @@ import android.widget.TextView;
 
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
+
+import com.bumptech.glide.Glide;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -40,7 +39,7 @@ public class MainActivity extends Activity {
     private static final int PURPLE = Color.rgb(124, 58, 237);
 
     private enum Feed {
-        HOME, MOVIES, SERIES, SEARCH, GENRE
+        HOME, MOVIES, SERIES, GENRE
     }
 
     private boolean television;
@@ -49,9 +48,22 @@ public class MainActivity extends Activity {
     private AppPrefs prefs;
     private PosterAdapter adapter;
     private RecyclerView grid;
+    private LinearLayout heroBox;
+    private ImageView heroBackdrop;
+    private TextView heroTitle;
+    private TextView heroMeta;
+    private Button heroWatch;
+    private Button heroDetails;
+    private LinearLayout categoriesRow;
     private LinearLayout continueBox;
     private RecyclerView continueRecycler;
     private ContinueWatchingAdapter continueAdapter;
+    private LinearLayout latestMoviesBox;
+    private LinearLayout latestSeriesBox;
+    private RecyclerView latestMoviesRecycler;
+    private RecyclerView latestSeriesRecycler;
+    private RowPosterAdapter latestMoviesAdapter;
+    private RowPosterAdapter latestSeriesAdapter;
     private HistoryStore historyStore;
     private ProgressBar progress;
     private ProgressBar paginationProgress;
@@ -59,6 +71,7 @@ public class MainActivity extends Activity {
     private TextView screenTitle;
     private ContentStateView stateView;
     private UpdateManager updateManager;
+    private CatalogItem heroItem;
 
     private final List<CatalogItem> currentItems = new ArrayList<>();
     private Feed feed = Feed.HOME;
@@ -197,7 +210,7 @@ public class MainActivity extends Activity {
 
         Button search = actionButton(getString(R.string.search));
         search.setContentDescription(getString(R.string.search));
-        search.setOnClickListener(v -> showSearch());
+        search.setOnClickListener(v -> startActivity(new Intent(this, SearchActivity.class)));
         header.addView(search, new LinearLayout.LayoutParams(dp(television ? 110 : 72), dp(television ? 48 : 40)));
 
         LinearLayout nav = new LinearLayout(this);
@@ -239,6 +252,86 @@ public class MainActivity extends Activity {
         inner.setOrientation(LinearLayout.VERTICAL);
         content.addView(inner, new FrameLayout.LayoutParams(-1, -1));
 
+        // ---------------- Hero banner ----------------
+        heroBox = new LinearLayout(this);
+        heroBox.setOrientation(LinearLayout.VERTICAL);
+        heroBox.setVisibility(View.GONE);
+        inner.addView(heroBox, new LinearLayout.LayoutParams(-1, -2));
+
+        FrameLayout hero = new FrameLayout(this);
+        heroBox.addView(hero, new LinearLayout.LayoutParams(-1, dp(television ? 380 : 250)));
+        heroBackdrop = new ImageView(this);
+        heroBackdrop.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        heroBackdrop.setBackgroundColor(Color.rgb(16, 13, 24));
+        hero.addView(heroBackdrop, new FrameLayout.LayoutParams(-1, -1));
+        View heroGradient = new View(this);
+        heroGradient.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{Color.TRANSPARENT, Color.argb(70, 0, 0, 0), BG}));
+        hero.addView(heroGradient, new FrameLayout.LayoutParams(-1, -1));
+
+        LinearLayout heroInfo = new LinearLayout(this);
+        heroInfo.setOrientation(LinearLayout.VERTICAL);
+        heroInfo.setGravity(Gravity.RIGHT);
+        heroInfo.setPadding(dp(television ? 42 : 18), dp(20), dp(television ? 42 : 18), dp(14));
+        hero.addView(heroInfo, new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM));
+
+        TextView heroBadge = text(getString(R.string.trending_week), television ? 14 : 11,
+                GOLD, true);
+        heroInfo.addView(heroBadge, new LinearLayout.LayoutParams(-1, -2));
+        heroTitle = text("", television ? 34 : 23, Color.WHITE, true);
+        heroTitle.setGravity(Gravity.RIGHT);
+        heroTitle.setMaxLines(2);
+        heroTitle.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        heroTitle.setPadding(0, dp(6), 0, dp(2));
+        heroInfo.addView(heroTitle, new LinearLayout.LayoutParams(-1, -2));
+        heroMeta = text("", television ? 16 : 12, Color.rgb(214, 208, 224), false);
+        heroMeta.setGravity(Gravity.RIGHT);
+        heroMeta.setPadding(0, dp(2), 0, dp(10));
+        heroInfo.addView(heroMeta, new LinearLayout.LayoutParams(-1, -2));
+
+        LinearLayout heroButtons = new LinearLayout(this);
+        heroButtons.setOrientation(LinearLayout.HORIZONTAL);
+        heroButtons.setGravity(Gravity.RIGHT);
+        heroInfo.addView(heroButtons, new LinearLayout.LayoutParams(-1, -2));
+        heroWatch = new Button(this);
+        heroWatch.setText(R.string.watch_now);
+        heroWatch.setAllCaps(false);
+        heroWatch.setTextColor(Color.WHITE);
+        heroWatch.setTextSize(television ? 17 : 14);
+        heroWatch.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        heroWatch.setBackground(pill(PURPLE, dp(14), GOLD));
+        heroWatch.setOnClickListener(v -> {
+            if (heroItem != null) openWatch(heroItem);
+        });
+        heroButtons.addView(heroWatch, new LinearLayout.LayoutParams(
+                television ? dp(230) : dp(150), dp(television ? 58 : 46)));
+        heroDetails = new Button(this);
+        heroDetails.setText(R.string.details);
+        heroDetails.setAllCaps(false);
+        heroDetails.setTextColor(Color.WHITE);
+        heroDetails.setTextSize(television ? 17 : 14);
+        heroDetails.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        heroDetails.setBackground(pill(Color.rgb(38, 32, 50), dp(14), Color.rgb(120, 100, 150)));
+        heroDetails.setOnClickListener(v -> {
+            if (heroItem != null) openDetails(heroItem);
+        });
+        LinearLayout.LayoutParams heroDetailsParams = new LinearLayout.LayoutParams(
+                television ? dp(190) : dp(130), dp(television ? 58 : 46));
+        heroDetailsParams.setMargins(dp(10), 0, 0, 0);
+        heroButtons.addView(heroDetails, heroDetailsParams);
+
+        // ---------------- Categories chips ----------------
+        HorizontalScrollView categoriesScroll = new HorizontalScrollView(this);
+        categoriesScroll.setHorizontalScrollBarEnabled(false);
+        categoriesScroll.setVisibility(View.GONE);
+        categoriesRow = new LinearLayout(this);
+        categoriesRow.setOrientation(LinearLayout.HORIZONTAL);
+        categoriesRow.setGravity(Gravity.RIGHT);
+        categoriesRow.setPadding(dp(television ? 24 : 14), dp(8), dp(television ? 24 : 14), dp(4));
+        categoriesScroll.addView(categoriesRow, new HorizontalScrollView.LayoutParams(-2, -1));
+        inner.addView(categoriesScroll, new LinearLayout.LayoutParams(-1,
+                dp(television ? 52 : 44)));
+
         continueBox = new LinearLayout(this);
         continueBox.setOrientation(LinearLayout.VERTICAL);
         continueBox.setVisibility(View.GONE);
@@ -259,6 +352,31 @@ public class MainActivity extends Activity {
         continueRecycler.setAdapter(continueAdapter);
         continueBox.addView(continueRecycler, new LinearLayout.LayoutParams(
                 -1, dp(television ? 262 : 206)));
+
+        // ---------------- Latest movies / series rows ----------------
+        latestMoviesBox = buildRowBox();
+        inner.addView(latestMoviesBox, new LinearLayout.LayoutParams(-1, -2));
+        latestMoviesRecycler = new RecyclerView(this);
+        latestMoviesRecycler.setClipToPadding(false);
+        latestMoviesRecycler.setItemAnimator(null);
+        latestMoviesRecycler.setLayoutManager(new androidx.recyclerview.widget.LinearLayoutManager(
+                this, androidx.recyclerview.widget.LinearLayoutManager.HORIZONTAL, false));
+        latestMoviesAdapter = new RowPosterAdapter(television, this::openDetails);
+        latestMoviesRecycler.setAdapter(latestMoviesAdapter);
+        latestMoviesBox.addView(latestMoviesRecycler, new LinearLayout.LayoutParams(
+                -1, dp(television ? 258 : 204)));
+
+        latestSeriesBox = buildRowBox();
+        inner.addView(latestSeriesBox, new LinearLayout.LayoutParams(-1, -2));
+        latestSeriesRecycler = new RecyclerView(this);
+        latestSeriesRecycler.setClipToPadding(false);
+        latestSeriesRecycler.setItemAnimator(null);
+        latestSeriesRecycler.setLayoutManager(new androidx.recyclerview.widget.LinearLayoutManager(
+                this, androidx.recyclerview.widget.LinearLayoutManager.HORIZONTAL, false));
+        latestSeriesAdapter = new RowPosterAdapter(television, this::openDetails);
+        latestSeriesRecycler.setAdapter(latestSeriesAdapter);
+        latestSeriesBox.addView(latestSeriesRecycler, new LinearLayout.LayoutParams(
+                -1, dp(television ? 258 : 204)));
 
         grid = new RecyclerView(this);
         grid.setClipToPadding(false);
@@ -308,6 +426,26 @@ public class MainActivity extends Activity {
         });
     }
 
+    private LinearLayout buildRowBox() {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setVisibility(View.GONE);
+        TextView heading = new TextView(this);
+        heading.setTextColor(GOLD);
+        heading.setTextSize(television ? 18 : 15);
+        heading.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        heading.setGravity(Gravity.RIGHT);
+        heading.setPadding(dp(television ? 24 : 14), dp(12), dp(television ? 24 : 14), dp(2));
+        box.addView(heading, new LinearLayout.LayoutParams(-1, -2));
+        return box;
+    }
+
+    private void setLatestHeading(LinearLayout box, String label) {
+        if (box != null && box.getChildCount() > 0 && box.getChildAt(0) instanceof TextView) {
+            ((TextView) box.getChildAt(0)).setText(label);
+        }
+    }
+
     private void showKeyMissing() {
         screenTitle.setText(getString(R.string.app_name));
         progress.setVisibility(View.GONE);
@@ -341,6 +479,7 @@ public class MainActivity extends Activity {
         paginationRetry.setVisibility(View.GONE);
         grid.setVisibility(View.GONE);
         stateView.showMessage(getString(R.string.loading_content));
+        setHomeDecorVisible(target == Feed.HOME);
 
         if (!prefs.hasTmdbKey()) {
             loading = false;
@@ -356,8 +495,6 @@ public class MainActivity extends Activity {
             screenTitle.setText(getString(R.string.trending_week));
         } else if (target == Feed.GENRE) {
             screenTitle.setText(genreName.isEmpty() ? getString(R.string.movies) : genreName);
-        } else {
-            screenTitle.setText(getString(R.string.search_results, searchQuery));
         }
 
         TmdbClient.Callback<List<CatalogItem>> callback = new TmdbClient.Callback<List<CatalogItem>>() {
@@ -379,6 +516,10 @@ public class MainActivity extends Activity {
                     adapter.submit(currentItems);
                     updatePaginationControl();
                     refreshContinueRow();
+                    if (target == Feed.HOME) {
+                        updateHero(items);
+                        loadHomeExtras();
+                    }
                     focusFirstCard();
                 });
             }
@@ -404,14 +545,139 @@ public class MainActivity extends Activity {
             case SERIES:
                 tmdb.popular("tv", 1, callback);
                 break;
-            case SEARCH:
-                tmdb.search(searchQuery, 1, callback);
-                break;
             case GENRE:
             default:
                 tmdb.discover(genreMediaType, genre, 1, callback);
                 break;
         }
+    }
+
+    private void setHomeDecorVisible(boolean visible) {
+        int visibility = visible ? View.VISIBLE : View.GONE;
+        if (heroBox != null) heroBox.setVisibility(visible && heroItem != null
+                ? View.VISIBLE : View.GONE);
+        if (categoriesRow != null && categoriesRow.getParent() != null) {
+            categoriesRow.getParent().setVisibility(visible && categoriesRow.getChildCount() > 0
+                    ? View.VISIBLE : View.GONE);
+        }
+        if (latestMoviesBox != null) {
+            latestMoviesBox.setVisibility(visible && latestMoviesAdapter != null
+                    && latestMoviesAdapter.size() > 0 ? View.VISIBLE : View.GONE);
+        }
+        if (latestSeriesBox != null) {
+            latestSeriesBox.setVisibility(visible && latestSeriesAdapter != null
+                    && latestSeriesAdapter.size() > 0 ? View.VISIBLE : View.GONE);
+        }
+    }
+
+    private void updateHero(List<CatalogItem> items) {
+        if (items == null || items.isEmpty()) {
+            heroBox.setVisibility(View.GONE);
+            heroItem = null;
+            return;
+        }
+        heroItem = items.get(0);
+        heroTitle.setText(heroItem.title);
+        StringBuilder meta = new StringBuilder();
+        if (!heroItem.year.isEmpty()) meta.append(heroItem.year);
+        if (heroItem.rating > 0f) {
+            if (meta.length() > 0) meta.append("   •   ");
+            meta.append("★ ").append(String.format(java.util.Locale.US, "%.1f", heroItem.rating));
+        }
+        if (!heroItem.genres.isEmpty()) {
+            if (meta.length() > 0) meta.append("   •   ");
+            meta.append(heroItem.genres);
+        }
+        heroMeta.setText(meta.toString());
+        Glide.with(this).load(heroItem.backdropUrl.isEmpty()
+                        ? heroItem.imageUrl : heroItem.backdropUrl)
+                .placeholder(android.R.color.darker_gray)
+                .error(android.R.color.darker_gray)
+                .centerCrop()
+                .into(heroBackdrop);
+        heroBox.setVisibility(View.VISIBLE);
+    }
+
+    private void loadHomeExtras() {
+        // Latest movies + latest series rows.
+        tmdb.popular("movie", 1, new TmdbClient.Callback<List<CatalogItem>>() {
+            @Override
+            public void onSuccess(List<CatalogItem> items) {
+                runOnUiThread(() -> {
+                    if (isFinishing() || isDestroyed()) return;
+                    setLatestHeading(latestMoviesBox, getString(R.string.latest_movies));
+                    latestMoviesAdapter.submit(items);
+                    latestMoviesBox.setVisibility(feed == Feed.HOME && !items.isEmpty()
+                            ? View.VISIBLE : View.GONE);
+                });
+            }
+
+            @Override
+            public void onError() {
+            }
+        });
+        tmdb.popular("tv", 1, new TmdbClient.Callback<List<CatalogItem>>() {
+            @Override
+            public void onSuccess(List<CatalogItem> items) {
+                runOnUiThread(() -> {
+                    if (isFinishing() || isDestroyed()) return;
+                    setLatestHeading(latestSeriesBox, getString(R.string.latest_series));
+                    latestSeriesAdapter.submit(items);
+                    latestSeriesBox.setVisibility(feed == Feed.HOME && !items.isEmpty()
+                            ? View.VISIBLE : View.GONE);
+                });
+            }
+
+            @Override
+            public void onError() {
+            }
+        });
+        // Categories chips.
+        tmdb.genreList("movie", new TmdbClient.Callback<List<TmdbClient.Genre>>() {
+            @Override
+            public void onSuccess(List<TmdbClient.Genre> genres) {
+                runOnUiThread(() -> renderCategories(genres));
+            }
+
+            @Override
+            public void onError() {
+            }
+        });
+    }
+
+    private void renderCategories(List<TmdbClient.Genre> genres) {
+        categoriesRow.removeAllViews();
+        if (genres == null || genres.isEmpty()) return;
+        for (TmdbClient.Genre genre : genres) {
+            Button chip = new Button(this);
+            chip.setText(genre.name);
+            chip.setAllCaps(false);
+            chip.setTextColor(Color.WHITE);
+            chip.setTextSize(television ? 14 : 12);
+            chip.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+            chip.setFocusable(television);
+            chip.setFocusableInTouchMode(television);
+            chip.setBackground(pill(Color.rgb(29, 24, 40), dp(14), Color.rgb(75, 58, 96)));
+            chip.setOnClickListener(v -> {
+                genreMediaType = "movie";
+                genreId = genre.id;
+                genreName = genre.name;
+                loadFeed(Feed.GENRE, "", genre.id);
+            });
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-2, dp(television ? 40 : 34));
+            params.setMargins(dp(3), 0, dp(3), 0);
+            categoriesRow.addView(chip, params);
+        }
+        if (categoriesRow.getParent() != null) {
+            categoriesRow.getParent().setVisibility(View.VISIBLE);
+        }
+    }
+
+    private void openWatch(CatalogItem item) {
+        Intent intent = new Intent(this, WatchActivity.class);
+        intent.putExtra("item", item);
+        intent.putExtra("title", item.title);
+        startActivity(intent);
     }
 
     private void loadMore() {
@@ -465,9 +731,6 @@ public class MainActivity extends Activity {
                 break;
             case SERIES:
                 tmdb.popular("tv", nextPage, callback);
-                break;
-            case SEARCH:
-                tmdb.search(query, nextPage, callback);
                 break;
             case GENRE:
             default:
@@ -574,34 +837,7 @@ public class MainActivity extends Activity {
         android.widget.Toast.makeText(this, message, android.widget.Toast.LENGTH_SHORT).show();
     }
 
-    private void showSearch() {
-        EditText input = new EditText(this);
-        input.setHint(R.string.search_hint);
-        input.setSingleLine(true);
-        input.setImeOptions(EditorInfo.IME_ACTION_SEARCH);
-        input.setTextDirection(View.TEXT_DIRECTION_RTL);
-        input.setPadding(dp(16), dp(8), dp(16), dp(8));
-        AlertDialog dialog = new AlertDialog.Builder(this).setTitle(R.string.search)
-                .setView(input).setNegativeButton(R.string.cancel, null)
-                .setPositiveButton(R.string.search, null).create();
-        dialog.setOnShowListener(v -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(b -> {
-            String text = input.getText().toString().trim();
-            if (!text.isEmpty()) {
-                loadFeed(Feed.SEARCH, text, 0);
-                dialog.dismiss();
-            }
-        }));
-        input.setOnEditorActionListener((v, action, event) -> {
-            if (action == EditorInfo.IME_ACTION_SEARCH) {
-                dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
-                return true;
-            }
-            return false;
-        });
-        dialog.show();
-        input.requestFocus();
-        if (!television) dialog.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE);
-    }
+
 
     private void addNav(LinearLayout nav, String label, View.OnClickListener listener) {
         Button button = new Button(this);

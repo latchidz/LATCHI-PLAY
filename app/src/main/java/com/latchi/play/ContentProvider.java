@@ -47,6 +47,16 @@ public interface ContentProvider {
         callback.onError();
     }
 
+    /** Rich details for a movie/series (only fields the source provides). */
+    default void details(CatalogItem item, DetailsCallback callback) {
+        callback.onError();
+    }
+
+    /** Seasons + episodes for a series, normalized and numerically ordered. */
+    default void episodes(CatalogItem item, EpisodesCallback callback) {
+        callback.onError();
+    }
+
     interface Callback {
         void onResolved(PlaybackSource source, String providerLabel);
 
@@ -55,6 +65,18 @@ public interface ContentProvider {
 
     interface CatalogCallback {
         void onSuccess(List<CatalogItem> items, boolean hasMore);
+
+        void onError();
+    }
+
+    interface DetailsCallback {
+        void onSuccess(MediaDetail detail);
+
+        void onError();
+    }
+
+    interface EpisodesCallback {
+        void onSuccess(List<SeasonGroup> seasons);
 
         void onError();
     }

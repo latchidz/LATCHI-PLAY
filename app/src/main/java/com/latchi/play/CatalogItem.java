@@ -6,11 +6,15 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Unified catalog model used by TMDB discovery, favorites, history and the watch screen.
- * {@code pageUrl} is the stable unique key ("tmdb:movie:123" / "tmdb:tv:123:s1e2").
+ * Unified catalog model used by TMDB discovery, web-site providers, favorites,
+ * history and the watch screen.
+ *
+ * {@code pageUrl} is the stable unique key per provider ("tmdb:movie:123",
+ * "https://topcinemaa.co/...", ...). {@code providerId} + {@code contentId}
+ * identify the item without relying on the URL.
  */
 public final class CatalogItem implements Serializable {
-    private static final long serialVersionUID = 3L;
+    private static final long serialVersionUID = 4L;
 
     public final String title;
     public final String imageUrl;
@@ -28,6 +32,9 @@ public final class CatalogItem implements Serializable {
     public final String backdropUrl;
     public final String genres;
 
+    public final String providerId;    // which ContentProvider owns this item
+    public final String contentId;     // provider-internal content id
+
     public CatalogItem(String title, String imageUrl, String pageUrl, String type) {
         this(title, imageUrl, pageUrl, type, 0, 0, Collections.emptyMap());
     }
@@ -42,6 +49,15 @@ public final class CatalogItem implements Serializable {
                        int seasonNumber, int episodeNumber, Map<String, String> metadata,
                        long tmdbId, String overview, float rating, String year,
                        String backdropUrl, String genres, String mediaType) {
+        this(title, imageUrl, pageUrl, type, seasonNumber, episodeNumber, metadata,
+                tmdbId, overview, rating, year, backdropUrl, genres, mediaType, "", "");
+    }
+
+    public CatalogItem(String title, String imageUrl, String pageUrl, String type,
+                       int seasonNumber, int episodeNumber, Map<String, String> metadata,
+                       long tmdbId, String overview, float rating, String year,
+                       String backdropUrl, String genres, String mediaType,
+                       String providerId, String contentId) {
         this.title = title == null ? "" : title;
         this.imageUrl = imageUrl == null ? "" : imageUrl;
         this.pageUrl = pageUrl == null ? "" : pageUrl;
@@ -57,6 +73,8 @@ public final class CatalogItem implements Serializable {
         this.backdropUrl = backdropUrl == null ? "" : backdropUrl;
         this.genres = genres == null ? "" : genres;
         this.mediaType = (mediaType == null || mediaType.isEmpty()) ? type : mediaType;
+        this.providerId = providerId == null ? "" : providerId;
+        this.contentId = contentId == null ? "" : contentId;
     }
 
     /** Builds a movie/series item straight from a TMDB discovery result. */
@@ -71,7 +89,14 @@ public final class CatalogItem implements Serializable {
                 type, 0, 0, Collections.emptyMap(),
                 id, overview, rating, releaseYear,
                 TmdbClient.backdropUrl(backdropPath),
-                "", mediaType);
+                "", mediaType, "tmdb", String.valueOf(id));
+    }
+
+    /** Copies this item but attaches a provider identity (used by web-site providers). */
+    public CatalogItem withProvider(String provider, String contentId) {
+        return new CatalogItem(title, imageUrl, pageUrl, type, seasonNumber, episodeNumber,
+                metadata, tmdbId, overview, rating, year, backdropUrl, genres, mediaType,
+                provider, contentId);
     }
 
     /** Recovers the TMDB id from a pageUrl like "tmdb:movie:123" (legacy saved items). */

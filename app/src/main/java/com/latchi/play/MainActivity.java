@@ -49,6 +49,10 @@ public class MainActivity extends Activity {
     private AppPrefs prefs;
     private PosterAdapter adapter;
     private RecyclerView grid;
+    private LinearLayout continueBox;
+    private RecyclerView continueRecycler;
+    private ContinueWatchingAdapter continueAdapter;
+    private HistoryStore historyStore;
     private ProgressBar progress;
     private ProgressBar paginationProgress;
     private Button paginationRetry;
@@ -80,6 +84,7 @@ public class MainActivity extends Activity {
 
         tmdb = new TmdbClient(this);
         prefs = new AppPrefs(this);
+        historyStore = new HistoryStore(this);
         configuredBefore = prefs.hasTmdbKey();
         buildUi();
         updateManager = new UpdateManager(this);
@@ -100,6 +105,64 @@ public class MainActivity extends Activity {
             configuredBefore = true;
             loadFeed(Feed.HOME);
         }
+        refreshContinueRow();
+    }
+
+    private void refreshContinueRow() {
+        if (continueBox == null || continueAdapter == null || historyStore == null) return;
+        boolean showRow = feed == Feed.HOME;
+        if (!showRow) {
+            continueBox.setVisibility(View.GONE);
+            return;
+        }
+        List<HistoryEntry> all = historyStore.getAll();
+        List<HistoryEntry> inProgress = new ArrayList<>();
+        for (HistoryEntry entry : all) {
+            if (entry.positionMs >= 5_000 && entry.progressPercent() < 98) {
+                inProgress.add(entry);
+                if (inProgress.size() >= 14) break;
+            }
+        }
+        if (inProgress.isEmpty()) {
+            continueBox.setVisibility(View.GONE);
+            return;
+        }
+        continueAdapter.submit(inProgress);
+        continueBox.setVisibility(View.VISIBLE);
+    }
+
+    private void openContinue(HistoryEntry entry) {
+        Intent intent = new Intent(this, WatchActivity.class);
+        intent.putExtra("item", entry.item);
+        intent.putExtra("title", entry.item.title);
+        startActivity(intent);
+    }
+
+    private void showSitesDialog() {
+        List<ContentProvider> sites = ProviderRegistry.catalogProviders(this);
+        if (sites.isEmpty()) {
+            ToastMessage(getString(R.string.no_sites_available));
+            return;
+        }
+        String[] labels = new String[sites.size()];
+        String[] ids = new String[sites.size()];
+        for (int i = 0; i < sites.size(); i++) {
+            labels[i] = sites.get(i).label(this);
+            ids[i] = sites.get(i).id();
+        }
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle(R.string.sites)
+                .setItems(labels, (d, which) -> {
+                    Intent intent = new Intent(MainActivity.this, SiteCatalogActivity.class);
+                    intent.putExtra("provider", ids[which]);
+                    startActivity(intent);
+                })
+                .setNegativeButton(R.string.cancel, null)
+                .create();
+        dialog.setOnShowListener(v -> {
+            if (television) dialog.getListView().requestFocus();
+        });
+        dialog.show();
     }
 
     private void buildUi() {
@@ -160,6 +223,7 @@ public class MainActivity extends Activity {
                 startActivity(new Intent(this, HistoryActivity.class)));
         addNav(nav, getString(R.string.settings), v ->
                 startActivity(new Intent(this, SettingsActivity.class)));
+        addNav(nav, getString(R.string.sites), v -> showSitesDialog());
         addNav(nav, getString(R.string.update), v -> updateManager.checkManually());
 
         progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
@@ -171,6 +235,31 @@ public class MainActivity extends Activity {
         FrameLayout content = new FrameLayout(this);
         root.addView(content, new LinearLayout.LayoutParams(-1, 0, 1));
 
+        LinearLayout inner = new LinearLayout(this);
+        inner.setOrientation(LinearLayout.VERTICAL);
+        content.addView(inner, new FrameLayout.LayoutParams(-1, -1));
+
+        continueBox = new LinearLayout(this);
+        continueBox.setOrientation(LinearLayout.VERTICAL);
+        continueBox.setVisibility(View.GONE);
+        inner.addView(continueBox, new LinearLayout.LayoutParams(-1, -2));
+
+        TextView continueHeading = text(getString(R.string.continue_watching),
+                television ? 18 : 15, GOLD, true);
+        continueHeading.setGravity(Gravity.RIGHT);
+        continueHeading.setPadding(dp(television ? 24 : 14), dp(12), dp(television ? 24 : 14), dp(2));
+        continueBox.addView(continueHeading, new LinearLayout.LayoutParams(-1, -2));
+
+        continueRecycler = new RecyclerView(this);
+        continueRecycler.setClipToPadding(false);
+        continueRecycler.setItemAnimator(null);
+        continueRecycler.setLayoutManager(new androidx.recyclerview.widget.LinearLayoutManager(
+                this, androidx.recyclerview.widget.LinearLayoutManager.HORIZONTAL, false));
+        continueAdapter = new ContinueWatchingAdapter(television, this::openContinue);
+        continueRecycler.setAdapter(continueAdapter);
+        continueBox.addView(continueRecycler, new LinearLayout.LayoutParams(
+                -1, dp(television ? 262 : 206)));
+
         grid = new RecyclerView(this);
         grid.setClipToPadding(false);
         grid.setPadding(dp(television ? 24 : 4), dp(television ? 16 : 5), dp(television ? 24 : 4), dp(82));
@@ -180,7 +269,7 @@ public class MainActivity extends Activity {
         grid.setLayoutManager(new GridLayoutManager(this, columns));
         adapter = new PosterAdapter(television, this::openDetails);
         grid.setAdapter(adapter);
-        content.addView(grid, new FrameLayout.LayoutParams(-1, -1));
+        inner.addView(grid, new LinearLayout.LayoutParams(-1, 0, 1));
 
         stateView = new ContentStateView(this, television);
         content.addView(stateView, new FrameLayout.LayoutParams(-1, -1));
@@ -289,6 +378,7 @@ public class MainActivity extends Activity {
                     grid.setVisibility(View.VISIBLE);
                     adapter.submit(currentItems);
                     updatePaginationControl();
+                    refreshContinueRow();
                     focusFirstCard();
                 });
             }

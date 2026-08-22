@@ -89,4 +89,29 @@
     <string name="xtream_note">يُستخدم فقط مع سيرفر تملكه أو لديك إذن للوصول إليه. يُجرَّب أولًا ثم Archive.org احتياطًا.</string>
     <string name="peertube_section">منصة PeerTube</string>
     <string name="peertube_instance">رابط المنصة (افتراضي: framatube.org)</string>
+
+    <!-- Sites / providers -->
+    <string name="sites">المواقع</string>
+    <string name="no_sites_available">لا توجد مواقع متاحة</string>
+    <string name="provider_topcinemaa">TopCinemaa</string>
+    <string name="provider_egydead">EgyDead</string>
+    <string name="provider_mycima">MyCima (مقفول)</string>
+    <string name="direct">مباشر</string>
+    <string name="site_series_note">المسلسلات من هذا الموقع: تصفح الحلقات من كتالوج الموقع، والتشغيل يعتمد على توفر مصدر مباشر.</string>
+
+    <!-- Continue watching -->
+    <string name="continue_watching">متابعة المشاهدة</string>
+    <string name="ended_message">انتهى المحتوى</string>
+    <string name="play_again">تشغيل من جديد</string>
+    <string name="next_episode_countdown">الحلقة التالية (%1$d)…</string>
+
+    <!-- Settings playback / app -->
+    <string name="playback_section">التشغيل</string>
+    <string name="auto_next_label">التشغيل التلقائي للحلقة التالية</string>
+    <string name="app_section">التطبيق</string>
+    <string name="clear_history">مسح السجل</string>
+    <string name="clear_history_title">مسح سجل المشاهدة؟</string>
+    <string name="clear_history_confirm">سيتم حذف كل سجل المشاهدة ومتابعة المشاهدة من هذا الجهاز.</string>
+    <string name="history_cleared">تم مسح السجل</string>
+    <string name="about_line">LATCHI PLAY • الإصدار %1$s (رقم %2$d)</string>
 </resources>

@@ -8,6 +8,7 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.GridLayout;
 import android.widget.HorizontalScrollView;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
@@ -160,29 +161,65 @@ public final class SeriesEpisodesPanel extends LinearLayout {
         for (int i = 0; i < episodes.size(); i++) {
             final CatalogItem episode = episodes.get(i);
             final CatalogItem next = nextEpisode(i);
-            Button button = new Button(activity);
-            button.setText(episodeTitle(episode));
-            button.setAllCaps(false);
-            button.setTextColor(Color.WHITE);
-            button.setTextSize(television ? 14 : 12);
-            button.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-            button.setGravity(Gravity.CENTER);
-            button.setFocusable(television);
-            button.setFocusableInTouchMode(television);
-            button.setBackground(round(SURFACE, dp(10), GOLD));
-            if (television) {
-                button.setOnFocusChangeListener((v, focused) ->
-                        v.setBackground(round(focused ? PURPLE : SURFACE, dp(10),
-                                focused ? GOLD : Color.rgb(68, 54, 86))));
+
+            // Card: thumbnail (TMDB still, when present) + episode label.
+            LinearLayout card = new LinearLayout(activity);
+            card.setOrientation(VERTICAL);
+            card.setFocusable(television);
+            card.setFocusableInTouchMode(television);
+            card.setClickable(true);
+            card.setClipToOutline(true);
+            card.setBackground(cardBackground(false));
+
+            ImageView thumb = new ImageView(activity);
+            thumb.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            thumb.setBackgroundColor(Color.rgb(12, 10, 17));
+            int thumbWidth = dp(television ? 168 : 108);
+            int thumbHeight = dp(television ? 96 : 62);
+            card.addView(thumb, new LayoutParams(thumbWidth, thumbHeight));
+            if (episode.imageUrl != null && !episode.imageUrl.isEmpty()) {
+                com.bumptech.glide.Glide.with(activity)
+                        .load(episode.imageUrl)
+                        .placeholder(android.R.color.darker_gray)
+                        .error(android.R.color.darker_gray)
+                        .centerCrop()
+                        .into(thumb);
             }
-            button.setOnClickListener(v -> listener.onEpisodeSelected(episode, next));
+
+            TextView label = new TextView(activity);
+            label.setText(episodeTitle(episode));
+            label.setTextColor(Color.WHITE);
+            label.setTextSize(television ? 13 : 11);
+            label.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+            label.setGravity(Gravity.CENTER);
+            label.setMaxLines(2);
+            label.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            label.setPadding(dp(4), dp(5), dp(4), dp(5));
+            card.addView(label, new LayoutParams(-1, -2));
+
+            if (television) {
+                card.setOnFocusChangeListener((v, focused) -> {
+                    v.setBackground(cardBackground(focused));
+                    v.animate().scaleX(focused ? 1.06f : 1f).scaleY(focused ? 1.06f : 1f)
+                            .setDuration(140).start();
+                });
+            }
+            card.setOnClickListener(v -> listener.onEpisodeSelected(episode, next));
 
             GridLayout.LayoutParams params = new GridLayout.LayoutParams();
-            params.width = dp(television ? 132 : 96);
-            params.height = dp(television ? 52 : 44);
-            params.setMargins(dp(4), dp(4), dp(4), dp(4));
-            episodesGrid.addView(button, params);
+            params.width = thumbWidth;
+            params.height = LayoutParams.WRAP_CONTENT;
+            params.setMargins(dp(4), dp(6), dp(4), dp(6));
+            episodesGrid.addView(card, params);
         }
+    }
+
+    private GradientDrawable cardBackground(boolean focused) {
+        GradientDrawable d = new GradientDrawable();
+        d.setColor(focused ? Color.rgb(37, 29, 50) : SURFACE);
+        d.setCornerRadius(dp(10));
+        d.setStroke(focused ? 3 : 1, focused ? GOLD : Color.rgb(68, 54, 86));
+        return d;
     }
 
     private CatalogItem nextEpisode(int currentIndex) {

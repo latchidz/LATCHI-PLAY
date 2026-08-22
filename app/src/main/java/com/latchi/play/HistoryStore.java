@@ -58,6 +58,10 @@ public final class HistoryStore {
         }
     }
 
+    public synchronized void clearAll() {
+        preferences.edit().putString(KEY_ITEMS, "[]").apply();
+    }
+
     private List<HistoryEntry> read() {
         List<HistoryEntry> result = new ArrayList<>();
         try {

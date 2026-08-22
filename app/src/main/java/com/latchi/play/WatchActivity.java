@@ -6,9 +6,10 @@ import android.content.pm.ActivityInfo;
 import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.Gravity;
 import android.view.View;
-import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
@@ -21,17 +22,16 @@ import android.widget.TextView;
 
 import androidx.media3.ui.PlayerView;
 
-import java.util.List;
-
 /**
- * Native playback screen. Sources come from the provider registry as direct media
- * URLs (mp4 / m3u8) and are played with Media3 ExoPlayer — no WebView, no iframes.
- * Providers fail over automatically until one works.
+ * Native playback screen (Media3/ExoPlayer only — no WebView, no iframes).
+ * A PlaybackResolver tries every provider in order with a timeout and failover,
+ * and an auto-next countdown plays the following episode when enabled.
  */
 public class WatchActivity extends Activity {
     private static final int BG = Color.rgb(7, 6, 12);
     private static final int GOLD = Color.rgb(246, 198, 75);
     private static final int PURPLE = Color.rgb(124, 58, 237);
+    private static final long AUTO_NEXT_MS = 5_000;
 
     private FrameLayout root;
     private LinearLayout chrome;
@@ -39,6 +39,7 @@ public class WatchActivity extends Activity {
     private PlayerView playerView;
     private PlaybackController playbackController;
     private HistoryStore historyStore;
+    private AppPrefs prefs;
     private ProgressBar progress;
     private ContentStateView stateView;
     private TextView sourceLabel;
@@ -47,10 +48,10 @@ public class WatchActivity extends Activity {
 
     private CatalogItem currentItem;
     private CatalogItem nextItem;
-    private List<ContentProvider> providers;
-    private int providerIndex;
-    private int resolveGeneration;
-    private String activeProvider = "";
+    private PlaybackResolver resolver;
+    private Handler handler = new Handler(Looper.getMainLooper());
+    private boolean autoNextEnabled;
+    private boolean autoNextPending;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -72,23 +73,36 @@ public class WatchActivity extends Activity {
                     currentItem.type, currentItem.seasonNumber, currentItem.episodeNumber,
                     currentItem.metadata, currentItem.tmdbId, currentItem.overview,
                     currentItem.rating, currentItem.year, currentItem.backdropUrl,
-                    currentItem.genres, currentItem.mediaType);
+                    currentItem.genres, currentItem.mediaType, currentItem.providerId,
+                    currentItem.contentId);
         }
 
         historyStore = new HistoryStore(this);
+        prefs = new AppPrefs(this);
+        autoNextEnabled = prefs.autoNext();
         historyStore.markOpened(currentItem);
         buildUi();
-        providers = ProviderRegistry.ordered(this);
 
+        resolver = new PlaybackResolver(this);
         String suppliedUrl = getIntent().getStringExtra("direct_url");
         String suppliedType = getIntent().getStringExtra("direct_type");
         if (suppliedUrl != null && !suppliedUrl.trim().isEmpty()) {
-            resolveGeneration++;
-            startPlayback(new PlaybackSource(suppliedUrl, suppliedType == null ? "mp4" : suppliedType,
+            startPlayback(new PlaybackSource(suppliedUrl,
+                    suppliedType == null ? "mp4" : suppliedType,
                     java.util.Collections.emptyMap(),
-                    java.util.Collections.singletonMap("origin", "intent")), "مباشر");
+                    java.util.Collections.singletonMap("origin", "intent")), getString(R.string.direct));
         } else {
-            resolveNextProvider(0);
+            resolver.resolve(currentItem, new PlaybackResolver.Callback() {
+                @Override
+                public void onResolved(PlaybackSource source, String providerLabel, int attempts) {
+                    runOnUiThread(() -> startPlayback(source, providerLabel));
+                }
+
+                @Override
+                public void onUnavailable(int attempts) {
+                    runOnUiThread(() -> showNoSource());
+                }
+            });
         }
     }
 
@@ -160,7 +174,8 @@ public class WatchActivity extends Activity {
 
         stateView = new ContentStateView(this, television);
         content.addView(stateView, new FrameLayout.LayoutParams(-1, -1));
-        stateView.showMessage(getString(R.string.searching_source, getString(R.string.provider_archive)));
+        stateView.showMessage(getString(R.string.searching_source,
+                getString(R.string.provider_archive)));
 
         nextButton = new Button(this);
         nextButton.setText(R.string.play_next_episode);
@@ -172,7 +187,7 @@ public class WatchActivity extends Activity {
         nextButton.setVisibility(View.GONE);
         nextButton.setOnClickListener(v -> openNext());
         FrameLayout.LayoutParams nextParams = new FrameLayout.LayoutParams(
-                dp(television ? 320 : 240), dp(television ? 64 : 56),
+                dp(television ? 340 : 250), dp(television ? 64 : 56),
                 Gravity.CENTER_HORIZONTAL | Gravity.BOTTOM);
         nextParams.bottomMargin = dp(40);
         content.addView(nextButton, nextParams);
@@ -180,47 +195,12 @@ public class WatchActivity extends Activity {
         if (television) back.requestFocus();
     }
 
-    private void resolveNextProvider(final int fromIndex) {
-        if (fromIndex >= providers.size()) {
-            showNoSource();
-            return;
-        }
-        final int generation = ++resolveGeneration;
-        final ContentProvider provider = providers.get(fromIndex);
-        final int myIndex = fromIndex;
-        runOnUiThread(() -> {
-            if (!isCurrentResolve(generation)) return;
-            providerIndex = myIndex;
-            progress.setVisibility(View.VISIBLE);
-            stateView.showMessage(getString(R.string.searching_source, provider.label(this)));
-            sourceLabel.setText("");
-        });
-
-        provider.resolve(currentItem, new ContentProvider.Callback() {
-            @Override
-            public void onResolved(PlaybackSource source, String providerLabel) {
-                runOnUiThread(() -> {
-                    if (!isCurrentResolve(generation)) return;
-                    startPlayback(source, providerLabel);
-                });
-            }
-
-            @Override
-            public void onError() {
-                runOnUiThread(() -> {
-                    if (!isCurrentResolve(generation)) return;
-                    resolveNextProvider(myIndex + 1);
-                });
-            }
-        });
-    }
-
     private void startPlayback(PlaybackSource source, String providerLabel) {
-        activeProvider = providerLabel;
         progress.setVisibility(View.VISIBLE);
         stateView.showMessage(getString(R.string.preparing_watch));
         sourceLabel.setText(getString(R.string.source_prefix, providerLabel));
         nextButton.setVisibility(View.GONE);
+        cancelAutoNext();
 
         playbackController.prepare(currentItem.pageUrl, source.url, source.type, source.headers,
                 new PlaybackController.Callback() {
@@ -249,16 +229,28 @@ public class WatchActivity extends Activity {
 
                     @Override
                     public void onError() {
-                        failover();
+                        runOnUiThread(() -> {
+                            progress.setVisibility(View.GONE);
+                            if (resolver != null) resolver.cancel();
+                            resolver = new PlaybackResolver(WatchActivity.this);
+                            resolver.resolve(currentItem, resolverCallback());
+                        });
                     }
                 });
     }
 
-    private void failover() {
-        runOnUiThread(() -> {
-            progress.setVisibility(View.GONE);
-            resolveNextProvider(providerIndex + 1);
-        });
+    private PlaybackResolver.Callback resolverCallback() {
+        return new PlaybackResolver.Callback() {
+            @Override
+            public void onResolved(PlaybackSource source, String providerLabel, int attempts) {
+                runOnUiThread(() -> startPlayback(source, providerLabel));
+            }
+
+            @Override
+            public void onUnavailable(int attempts) {
+                runOnUiThread(() -> showNoSource());
+            }
+        };
     }
 
     private void handleEnded() {
@@ -269,11 +261,62 @@ public class WatchActivity extends Activity {
             if (nextItem != null) {
                 nextButton.setVisibility(View.VISIBLE);
                 if (DeviceUtils.isTelevision(this)) nextButton.requestFocus();
+                if (autoNextEnabled) {
+                    startAutoNextCountdown();
+                }
             } else {
                 stateView.showAction(getString(R.string.ended_message),
-                        getString(R.string.play_again), v -> resolveNextProvider(0));
+                        getString(R.string.play_again), v -> {
+                            resolver = new PlaybackResolver(this);
+                            resolver.resolve(currentItem, resolverCallback());
+                        });
             }
         });
+    }
+
+    private void startAutoNextCountdown() {
+        cancelAutoNext();
+        autoNextPending = true;
+        nextButton.setEnabled(false);
+        nextButton.setAlpha(.85f);
+        updateCountdownText((int) (AUTO_NEXT_MS / 1000));
+        handler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                if (!autoNextPending || isFinishing() || isDestroyed()) return;
+                autoNextPending = false;
+                nextButton.setEnabled(true);
+                nextButton.setAlpha(1f);
+                openNext();
+            }
+        }, AUTO_NEXT_MS);
+
+        handler.post(new Runnable() {
+            private int remaining = (int) (AUTO_NEXT_MS / 1000);
+
+            @Override
+            public void run() {
+                if (!autoNextPending || isFinishing() || isDestroyed()) return;
+                if (remaining > 0) {
+                    updateCountdownText(remaining);
+                    remaining--;
+                    handler.postDelayed(this, 1000);
+                }
+            }
+        });
+    }
+
+    private void updateCountdownText(int seconds) {
+        nextButton.setText(getString(R.string.next_episode_countdown, seconds));
+    }
+
+    private void cancelAutoNext() {
+        autoNextPending = false;
+        if (nextButton != null) {
+            nextButton.setEnabled(true);
+            nextButton.setAlpha(1f);
+        }
+        handler.removeCallbacksAndMessages(null);
     }
 
     private void openNext() {
@@ -289,12 +332,10 @@ public class WatchActivity extends Activity {
         progress.setVisibility(View.GONE);
         playerView.setVisibility(View.GONE);
         sourceLabel.setText("");
-        stateView.showAction(getString(R.string.no_source_found), getString(R.string.retry),
-                v -> resolveNextProvider(0));
-    }
-
-    private boolean isCurrentResolve(int generation) {
-        return generation == resolveGeneration && !isFinishing() && !isDestroyed();
+        stateView.showAction(getString(R.string.no_source_found), getString(R.string.retry), v -> {
+            resolver = new PlaybackResolver(this);
+            resolver.resolve(currentItem, resolverCallback());
+        });
     }
 
     @Override
@@ -326,6 +367,8 @@ public class WatchActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        cancelAutoNext();
+        if (resolver != null) resolver.cancel();
         if (playbackController != null) {
             playbackController.release();
             playbackController = null;

@@ -34,6 +34,7 @@ public class SettingsActivity extends Activity {
     private EditText xtreamPassword;
     private EditText peertubeInstance;
     private Button providerButton;
+    private android.widget.Switch autoNextSwitch;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -135,6 +136,55 @@ public class SettingsActivity extends Activity {
         peertubeInstance = field(prefs.getPeerTubeInstance(), getString(R.string.peertube_instance));
         root.addView(peertubeInstance, new LinearLayout.LayoutParams(-1, dp(television ? 58 : 52)));
 
+        // ---- Playback section ----
+        TextView playbackLabel = text(getString(R.string.playback_section), television ? 18 : 15,
+                Color.WHITE, true);
+        playbackLabel.setGravity(Gravity.RIGHT);
+        playbackLabel.setPadding(0, dp(16), 0, dp(6));
+        root.addView(playbackLabel, new LinearLayout.LayoutParams(-1, -2));
+
+        LinearLayout autoNextRow = new LinearLayout(this);
+        autoNextRow.setGravity(Gravity.CENTER_VERTICAL);
+        autoNextRow.setOrientation(LinearLayout.HORIZONTAL);
+        autoNextRow.setBackground(pill(SURFACE, dp(12), Color.rgb(58, 48, 74)));
+        root.addView(autoNextRow, new LinearLayout.LayoutParams(-1, dp(television ? 58 : 52)));
+
+        autoNextSwitch = new android.widget.Switch(this);
+        autoNextSwitch.setChecked(prefs.autoNext());
+        autoNextSwitch.setFocusable(television);
+        LinearLayout.LayoutParams switchParams = new LinearLayout.LayoutParams(
+                dp(television ? 90 : 70), -1);
+        switchParams.setMargins(dp(10), 0, dp(6), 0);
+        autoNextRow.addView(autoNextSwitch, switchParams);
+
+        TextView autoNextText = text(getString(R.string.auto_next_label),
+                television ? 16 : 14, Color.WHITE, false);
+        autoNextText.setGravity(Gravity.RIGHT | Gravity.CENTER_VERTICAL);
+        autoNextRow.addView(autoNextText, new LinearLayout.LayoutParams(0, -1, 1));
+
+        // ---- App section ----
+        TextView appLabel = text(getString(R.string.app_section), television ? 18 : 15,
+                Color.WHITE, true);
+        appLabel.setGravity(Gravity.RIGHT);
+        appLabel.setPadding(0, dp(16), 0, dp(6));
+        root.addView(appLabel, new LinearLayout.LayoutParams(-1, -2));
+
+        Button clearHistory = new Button(this);
+        clearHistory.setText(R.string.clear_history);
+        clearHistory.setAllCaps(false);
+        clearHistory.setTextColor(Color.WHITE);
+        clearHistory.setTextSize(television ? 16 : 14);
+        clearHistory.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        clearHistory.setBackground(pill(Color.rgb(24, 20, 32), dp(12), Color.rgb(150, 60, 60)));
+        clearHistory.setOnClickListener(v -> confirmClearHistory());
+        root.addView(clearHistory, new LinearLayout.LayoutParams(-1, dp(television ? 56 : 50)));
+
+        TextView about = text(getString(R.string.about_line, BuildConfig.VERSION_NAME,
+                BuildConfig.VERSION_CODE), television ? 13 : 11, Color.rgb(160, 152, 176), false);
+        about.setGravity(Gravity.RIGHT);
+        about.setPadding(0, dp(10), 0, dp(2));
+        root.addView(about, new LinearLayout.LayoutParams(-1, -2));
+
         // ---- Actions ----
         LinearLayout actions = new LinearLayout(this);
         actions.setOrientation(LinearLayout.HORIZONTAL);
@@ -174,12 +224,18 @@ public class SettingsActivity extends Activity {
         String[] labels = {
                 getString(R.string.provider_archive),
                 getString(R.string.provider_peertube),
-                getString(R.string.provider_xtream)
+                getString(R.string.provider_xtream),
+                getString(R.string.provider_topcinemaa),
+                getString(R.string.provider_egydead),
+                getString(R.string.provider_mycima)
         };
         String[] ids = {
                 AppPrefs.PROVIDER_ARCHIVE,
                 AppPrefs.PROVIDER_PEERTUBE,
-                AppPrefs.PROVIDER_XTREAM
+                AppPrefs.PROVIDER_XTREAM,
+                AppPrefs.PROVIDER_TOPCINEMAA,
+                AppPrefs.PROVIDER_EGYDEAD,
+                AppPrefs.PROVIDER_MYCIMA
         };
         int current = 0;
         String providerId = prefs.getProviderId();
@@ -203,6 +259,9 @@ public class SettingsActivity extends Activity {
         String label;
         if (AppPrefs.PROVIDER_XTREAM.equals(id)) label = getString(R.string.provider_xtream);
         else if (AppPrefs.PROVIDER_PEERTUBE.equals(id)) label = getString(R.string.provider_peertube);
+        else if (AppPrefs.PROVIDER_TOPCINEMAA.equals(id)) label = getString(R.string.provider_topcinemaa);
+        else if (AppPrefs.PROVIDER_EGYDEAD.equals(id)) label = getString(R.string.provider_egydead);
+        else if (AppPrefs.PROVIDER_MYCIMA.equals(id)) label = getString(R.string.provider_mycima);
         else label = getString(R.string.provider_archive);
         providerButton.setText("◆  " + label);
     }
@@ -213,8 +272,21 @@ public class SettingsActivity extends Activity {
         prefs.setXtreamUser(xtreamUser.getText().toString());
         prefs.setXtreamPassword(xtreamPassword.getText().toString());
         prefs.setPeerTubeInstance(peertubeInstance.getText().toString());
+        prefs.setAutoNext(autoNextSwitch.isChecked());
         Toast.makeText(this, R.string.settings_saved, Toast.LENGTH_SHORT).show();
         finish();
+    }
+
+    private void confirmClearHistory() {
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.clear_history_title)
+                .setMessage(R.string.clear_history_confirm)
+                .setPositiveButton(R.string.clear_history, (d, which) -> {
+                    new HistoryStore(this).clearAll();
+                    Toast.makeText(this, R.string.history_cleared, Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton(R.string.cancel, null)
+                .show();
     }
 
     private EditText field(String value, String hint) {

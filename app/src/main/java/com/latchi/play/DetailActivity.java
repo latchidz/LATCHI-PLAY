@@ -90,6 +90,16 @@ public class DetailActivity extends Activity {
     }
 
     private void loadDetails() {
+        // Items from web-site providers have no TMDB id; render from their own data.
+        if (item.tmdbId <= 0) {
+            TmdbDetail synthetic = new TmdbDetail(0L,
+                    seriesItem ? "tv" : "movie",
+                    item.title, item.overview, item.rating, item.year, item.genres,
+                    item.imageUrl, item.backdropUrl, 0,
+                    new ArrayList<>());
+            buildContent(synthetic);
+            return;
+        }
         if (!tmdb.isConfigured()) {
             stateView.showAction(getString(R.string.tmdb_key_missing),
                     getString(R.string.open_settings),
@@ -167,10 +177,13 @@ public class DetailActivity extends Activity {
         title.setPadding(0, dp(10), 0, dp(4));
         info.addView(title, new LinearLayout.LayoutParams(-1, -2));
 
-        TextView meta = text(metaLine(detail), television ? 17 : 14, GOLD, false);
-        meta.setGravity(Gravity.RIGHT);
-        meta.setPadding(0, dp(4), 0, dp(10));
-        info.addView(meta, new LinearLayout.LayoutParams(-1, -2));
+        String metaText = metaLine(detail);
+        if (!metaText.isEmpty()) {
+            TextView meta = text(metaText, television ? 17 : 14, GOLD, false);
+            meta.setGravity(Gravity.RIGHT);
+            meta.setPadding(0, dp(4), 0, dp(10));
+            info.addView(meta, new LinearLayout.LayoutParams(-1, -2));
+        }
 
         if (!detail.overview.isEmpty()) {
             TextView overview = text(detail.overview, television ? 18 : 15,
@@ -213,7 +226,13 @@ public class DetailActivity extends Activity {
         backParams.setMargins(0, dp(10), 0, 0);
         info.addView(back, backParams);
 
-        if (seriesItem) {
+        if (seriesItem && item.tmdbId <= 0) {
+            TextView note = text(getString(R.string.site_series_note),
+                    television ? 15 : 13, Color.rgb(175, 167, 190), false);
+            note.setGravity(Gravity.RIGHT);
+            note.setPadding(0, dp(14), 0, dp(6));
+            info.addView(note, new LinearLayout.LayoutParams(-1, -2));
+        } else if (seriesItem) {
             episodesPanel = new SeriesEpisodesPanel(this, television, item.tmdbId,
                     detail.seasons, new SeriesEpisodesPanel.Listener() {
                 @Override

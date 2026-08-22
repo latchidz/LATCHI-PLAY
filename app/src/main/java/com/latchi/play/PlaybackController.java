@@ -61,6 +61,11 @@ public final class PlaybackController {
         playerView.setUseController(true);
         playerView.setControllerAutoShow(true);
         playerView.setControllerHideOnTouch(true);
+        playerView.setShowRewindButton(true);
+        playerView.setShowFastForwardButton(true);
+        playerView.setRewindIncrementMs(10_000);
+        playerView.setFastForwardIncrementMs(10_000);
+        playerView.setShowSubtitleButton(true);
 
         player.addListener(new Player.Listener() {
             @Override

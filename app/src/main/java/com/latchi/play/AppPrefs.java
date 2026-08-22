@@ -8,12 +8,23 @@ public final class AppPrefs {
     public static final String PROVIDER_ARCHIVE = "archive";
     public static final String PROVIDER_PEERTUBE = "peertube";
     public static final String PROVIDER_XTREAM = "xtream";
+    public static final String PROVIDER_TOPCINEMAA = "topcinemaa";
+    public static final String PROVIDER_EGYDEAD = "egydead";
+    public static final String PROVIDER_MYCIMA = "mycima";
 
     private static final String PREFS = "latchi_play_settings";
     private final SharedPreferences prefs;
 
     public AppPrefs(Context context) {
         prefs = context.getApplicationContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+    }
+
+    public boolean autoNext() {
+        return prefs.getBoolean("auto_next", true);
+    }
+
+    public void setAutoNext(boolean enabled) {
+        prefs.edit().putBoolean("auto_next", enabled).apply();
     }
 
     public String getTmdbKey() {

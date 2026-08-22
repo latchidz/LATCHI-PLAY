@@ -43,7 +43,7 @@
             android:configChanges="keyboard|keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize|uiMode"
             android:exported="false" />
         <activity
-            android:name=".SeriesEpisodesActivity"
+            android:name=".SettingsActivity"
             android:configChanges="keyboard|keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize|uiMode"
             android:exported="false" />
         <activity

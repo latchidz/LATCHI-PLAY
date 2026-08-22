@@ -79,14 +79,26 @@ public final class FavoritesStore {
                 String title = object.optString("title", "").trim();
                 String pageUrl = object.optString("page_url", "").trim();
                 if (title.isEmpty() || pageUrl.isEmpty()) continue;
+                String type = object.optString("type", "movie");
+                long tmdbId = object.optLong("tmdb_id", 0L);
+                if (tmdbId <= 0) tmdbId = CatalogItem.tmdbIdFromPageUrl(pageUrl);
+                String mediaType = object.optString("media_type", "");
+                if (mediaType.isEmpty()) mediaType = CatalogItem.mediaTypeFromPageUrl(pageUrl);
                 result.add(new CatalogItem(
                         title,
                         object.optString("image_url", ""),
                         pageUrl,
-                        object.optString("type", "movie"),
+                        type,
                         object.optInt("season_number", 0),
                         object.optInt("episode_number", 0),
-                        java.util.Collections.emptyMap()
+                        java.util.Collections.emptyMap(),
+                        tmdbId,
+                        object.optString("overview", ""),
+                        (float) object.optDouble("rating", 0d),
+                        object.optString("year", ""),
+                        "",
+                        object.optString("genres", ""),
+                        mediaType
                 ));
             }
         } catch (Exception ignored) {
@@ -106,6 +118,12 @@ public final class FavoritesStore {
                 object.put("type", item.type);
                 object.put("season_number", item.seasonNumber);
                 object.put("episode_number", item.episodeNumber);
+                object.put("tmdb_id", item.tmdbId);
+                object.put("media_type", item.mediaType);
+                object.put("overview", item.overview);
+                object.put("rating", item.rating);
+                object.put("year", item.year);
+                object.put("genres", item.genres);
                 array.put(object);
             } catch (Exception ignored) {
                 // Skip only the malformed item; keep the rest of the favorites.

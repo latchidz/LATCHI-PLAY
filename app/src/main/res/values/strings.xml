@@ -5,9 +5,23 @@
     <string name="series">المسلسلات</string>
     <string name="search">بحث</string>
     <string name="update">تحديث</string>
+    <string name="settings">الإعدادات</string>
     <string name="latest_additions">أحدث الإضافات</string>
+    <string name="trending_week">الأكثر رواجًا هذا الأسبوع</string>
+    <string name="popular_movies">الأفلام الرائجة</string>
+    <string name="popular_series">المسلسلات الرائجة</string>
+    <string name="search_results">نتائج: %1$s</string>
+    <string name="search_hint">اسم الفيلم أو المسلسل</string>
+    <string name="choose_genre_movies">اختر نوع الأفلام</string>
+    <string name="choose_genre_series">اختر نوع المسلسلات</string>
+    <string name="all_movies">الكل (الأفلام الرائجة)</string>
+    <string name="all_series">الكل (المسلسلات الرائجة)</string>
     <string name="loading_content">جارٍ تحميل المحتوى…</string>
+    <string name="loading_details">جارٍ تحميل التفاصيل…</string>
     <string name="preparing_watch">جارٍ تحضير المشاهدة…</string>
+    <string name="searching_source">جارٍ البحث عن مصدر: %1$s</string>
+    <string name="no_source_found">لا يوجد مصدر متاح لهذا المحتوى</string>
+    <string name="source_prefix">المصدر: %1$s</string>
     <string name="no_results">لا توجد نتائج</string>
     <string name="load_content_failed">تعذّر تحميل المحتوى</string>
     <string name="load_watch_failed">تعذّر تحميل صفحة المشاهدة</string>
@@ -21,6 +35,7 @@
     <string name="offline_title">%1$s • دون اتصال</string>
     <string name="cached_title">%1$s • نسخة محفوظة</string>
     <string name="back">رجوع</string>
+    <string name="save">حفظ</string>
     <string name="favorites">المفضلة</string>
     <string name="favorite_add">☆  إضافة للمفضلة</string>
     <string name="favorite_saved">★  محفوظ في المفضلة</string>
@@ -39,7 +54,12 @@
     <string name="no_episodes">لا توجد حلقات متاحة حاليًا</string>
     <string name="season_number">الموسم %1$d</string>
     <string name="next_episode_available">انتهت الحلقة</string>
-    <string name="play_next_episode">تشغيل الحلقة التالية</string>
+    <string name="play_next_episode">الحلقة التالية ▶</string>
+    <string name="movie_badge">فيلم</string>
+    <string name="series_badge">مسلسل</string>
+    <string name="minutes">دقيقة</string>
+    <string name="ended_message">انتهى المحتوى</string>
+    <string name="play_again">تشغيل من جديد</string>
     <string name="history">السجل</string>
     <string name="continue_watching">متابعة المشاهدة والسجل</string>
     <string name="history_empty">لا يوجد سجل مشاهدة بعد</string>
@@ -47,4 +67,26 @@
     <string name="remove_history_title">إزالة من السجل؟</string>
     <string name="removed_from_history">تمت الإزالة من السجل</string>
     <string name="external_window_blocked">تم منع نافذة خارجية</string>
+
+    <!-- Settings / TMDB -->
+    <string name="tmdb_key_label">مفتاح TMDB</string>
+    <string name="tmdb_key_hint">مفتاح API أو Read Access Token</string>
+    <string name="tmdb_key_help">مفتاح مجاني من themoviedb.org → Settings → API. نحفظه على جهازك فقط.</string>
+    <string name="tmdb_attribution">هذا التطبيق يستخدم واجهة TMDB API ولا يتبع لـ TMDB وليس معتمدًا منها.\nThis product uses the TMDB API but is not endorsed or certified by TMDB.</string>
+    <string name="tmdb_key_missing">أدخل مفتاح TMDB من الإعدادات للبدء</string>
+    <string name="open_settings">فتح الإعدادات</string>
+    <string name="settings_saved">تم الحفظ ✓</string>
+
+    <!-- Settings / Providers -->
+    <string name="provider_label">مصدر التشغيل</string>
+    <string name="provider_archive">Archive.org (مجاني)</string>
+    <string name="provider_peertube">PeerTube (مجاني)</string>
+    <string name="provider_xtream">Xtream / IPTV (سيرفرك)</string>
+    <string name="xtream_section">سيرفر Xtream / IPTV الخاص بك</string>
+    <string name="xtream_server_hint">رابط السيرفر مثال: http://192.168.1.5:8080</string>
+    <string name="xtream_user">اسم المستخدم</string>
+    <string name="xtream_pass">كلمة المرور</string>
+    <string name="xtream_note">يُستخدم فقط مع سيرفر تملكه أو لديك إذن للوصول إليه. يُجرَّب أولًا ثم Archive.org احتياطًا.</string>
+    <string name="peertube_section">منصة PeerTube</string>
+    <string name="peertube_instance">رابط المنصة (افتراضي: framatube.org)</string>
 </resources>

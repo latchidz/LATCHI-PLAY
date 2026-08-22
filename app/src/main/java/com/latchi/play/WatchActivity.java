@@ -3,102 +3,92 @@ package com.latchi.play;
 import android.app.Activity;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
-import android.graphics.Bitmap;
 import android.graphics.Color;
-import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.Window;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
-import android.webkit.CookieManager;
-import android.webkit.WebChromeClient;
-import android.webkit.WebResourceError;
-import android.webkit.WebResourceRequest;
-import android.webkit.WebResourceResponse;
-import android.webkit.WebSettings;
-import android.webkit.WebView;
-import android.webkit.WebViewClient;
+import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import androidx.media3.ui.PlayerView;
 
-import java.util.Collections;
 import java.util.List;
 
+/**
+ * Native playback screen. Sources come from the provider registry as direct media
+ * URLs (mp4 / m3u8) and are played with Media3 ExoPlayer — no WebView, no iframes.
+ * Providers fail over automatically until one works.
+ */
 public class WatchActivity extends Activity {
-    private static final String ALLOWED_HOST = "shooflive.net";
-    private static final String CLEAN_PLAYER_JS =
-            "(function(){document.cookie='sb_seen=1;path=/;max-age=31536000';" +
-            "var st=document.createElement('style');st.textContent='" +
-            "#headerNav,body>footer,.footer,#sbOverlay,.sbBox,.sbPopup,.singleInfo,.sec-line,.share-button-wrapper{display:none!important}" +
-            "html,body,main,.secContainer,.containers{margin:0!important;padding:0!important;background:#000!important;width:100%!important;height:100%!important;overflow:hidden!important}" +
-            ".secContainer.bg{position:fixed!important;inset:0!important;z-index:999999!important}" +
-            ".getEmbed,.watch{margin:0!important;padding:0!important;width:100%!important;height:100vh!important;background:#000!important}" +
-            ".getEmbed iframe,.watch iframe,.watch video{width:100%!important;height:100vh!important;min-height:100vh!important;border:0!important}';" +
-            "document.documentElement.appendChild(st);" +
-            "var p=document.getElementById('sbOverlay');if(p)p.remove();" +
-            "document.querySelectorAll('a[target=\"_blank\"]').forEach(function(a){a.target='_self'});" +
-            "var f=document.querySelector('.getEmbed iframe,.watch iframe');if(f){f.setAttribute('allow','autoplay; fullscreen; picture-in-picture');f.focus();}})();";
+    private static final int BG = Color.rgb(7, 6, 12);
+    private static final int GOLD = Color.rgb(246, 198, 75);
+    private static final int PURPLE = Color.rgb(124, 58, 237);
 
     private FrameLayout root;
     private LinearLayout chrome;
     private LinearLayout topBar;
     private PlayerView playerView;
     private PlaybackController playbackController;
-    private ServerResolver serverResolver;
     private HistoryStore historyStore;
-    private WebView webView;
     private ProgressBar progress;
     private ContentStateView stateView;
-    private View customView;
-    private WebChromeClient.CustomViewCallback customCallback;
-    private String currentUrl;
+    private TextView sourceLabel;
+    private TextView titleView;
+    private Button nextButton;
+
     private CatalogItem currentItem;
     private CatalogItem nextItem;
-    private List<PlaybackSource> resolvedSources = Collections.emptyList();
-    private int sourceIndex;
-    private int resolverGeneration;
-    private boolean nativePlayback;
-    private boolean nativeReady;
-    private boolean webFallbackActive;
-    private boolean mainFrameFailed;
+    private List<ContentProvider> providers;
+    private int providerIndex;
+    private int resolveGeneration;
+    private String activeProvider = "";
 
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
-        buildUi();
-        configureWebView();
-        serverResolver = new ServerResolver();
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        getWindow().setStatusBarColor(BG);
+        getWindow().setNavigationBarColor(BG);
 
-        currentUrl = getIntent().getStringExtra("url");
         currentItem = (CatalogItem) getIntent().getSerializableExtra("item");
         nextItem = (CatalogItem) getIntent().getSerializableExtra("next_item");
-        historyStore = new HistoryStore(this);
-        if (!isAllowedUrl(currentUrl)) {
+        String fallbackTitle = getIntent().getStringExtra("title");
+        if (currentItem == null) {
             finish();
             return;
         }
+        if (fallbackTitle != null && !fallbackTitle.isEmpty() && currentItem.title.isEmpty()) {
+            currentItem = new CatalogItem(fallbackTitle, currentItem.imageUrl, currentItem.pageUrl,
+                    currentItem.type, currentItem.seasonNumber, currentItem.episodeNumber,
+                    currentItem.metadata, currentItem.tmdbId, currentItem.overview,
+                    currentItem.rating, currentItem.year, currentItem.backdropUrl,
+                    currentItem.genres, currentItem.mediaType);
+        }
+
+        historyStore = new HistoryStore(this);
+        historyStore.markOpened(currentItem);
+        buildUi();
+        providers = ProviderRegistry.ordered(this);
 
         String suppliedUrl = getIntent().getStringExtra("direct_url");
         String suppliedType = getIntent().getStringExtra("direct_type");
-        if (currentItem != null) historyStore.markOpened(currentItem);
-        if (isDirectMediaUrl(suppliedUrl)) {
-            resolvedSources = Collections.singletonList(new PlaybackSource(
-                    suppliedUrl, suppliedType, Collections.emptyMap(),
-                    Collections.singletonMap("origin", "intent")));
-            sourceIndex = 0;
-            startNativePlayback(resolvedSources.get(0));
+        if (suppliedUrl != null && !suppliedUrl.trim().isEmpty()) {
+            resolveGeneration++;
+            startPlayback(new PlaybackSource(suppliedUrl, suppliedType == null ? "mp4" : suppliedType,
+                    java.util.Collections.emptyMap(),
+                    java.util.Collections.singletonMap("origin", "intent")), "مباشر");
         } else {
-            resolveAndPreparePlayback();
+            resolveNextProvider(0);
         }
     }
 
@@ -110,7 +100,7 @@ public class WatchActivity extends Activity {
 
         chrome = new LinearLayout(this);
         chrome.setOrientation(LinearLayout.VERTICAL);
-        root.addView(chrome, match());
+        root.addView(chrome, new FrameLayout.LayoutParams(-1, -1));
 
         topBar = new LinearLayout(this);
         topBar.setGravity(Gravity.CENTER_VERTICAL);
@@ -127,18 +117,26 @@ public class WatchActivity extends Activity {
         back.setOnClickListener(view -> onBackPressed());
         topBar.addView(back, new LinearLayout.LayoutParams(dp(90), -1));
 
-        TextView title = new TextView(this);
-        title.setText(getIntent().getStringExtra("title"));
-        title.setTextColor(Color.WHITE);
-        title.setTextSize(16);
-        title.setGravity(Gravity.CENTER_VERTICAL | Gravity.RIGHT);
-        title.setMaxLines(1);
-        title.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        topBar.addView(title, new LinearLayout.LayoutParams(0, -1, 1));
+        titleView = new TextView(this);
+        titleView.setText(currentItem.title);
+        titleView.setTextColor(Color.WHITE);
+        titleView.setTextSize(16);
+        titleView.setGravity(Gravity.CENTER_VERTICAL | Gravity.RIGHT);
+        titleView.setMaxLines(1);
+        titleView.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        topBar.addView(titleView, new LinearLayout.LayoutParams(0, -1, 1));
+
+        sourceLabel = new TextView(this);
+        sourceLabel.setText("");
+        sourceLabel.setTextColor(Color.rgb(175, 167, 190));
+        sourceLabel.setTextSize(13);
+        sourceLabel.setGravity(Gravity.CENTER);
+        sourceLabel.setMaxLines(1);
+        topBar.addView(sourceLabel, new LinearLayout.LayoutParams(dp(170), -1));
 
         TextView brand = new TextView(this);
         brand.setText(R.string.app_name);
-        brand.setTextColor(Color.rgb(246, 198, 75));
+        brand.setTextColor(GOLD);
         brand.setTextSize(14);
         brand.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
         brand.setGravity(Gravity.CENTER);
@@ -146,7 +144,7 @@ public class WatchActivity extends Activity {
 
         progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         progress.setIndeterminate(true);
-        progress.setIndeterminateTintList(android.content.res.ColorStateList.valueOf(Color.rgb(124, 58, 237)));
+        progress.setIndeterminateTintList(android.content.res.ColorStateList.valueOf(PURPLE));
         chrome.addView(progress, new LinearLayout.LayoutParams(-1, dp(3)));
 
         FrameLayout content = new FrameLayout(this);
@@ -160,336 +158,211 @@ public class WatchActivity extends Activity {
         content.addView(playerView, new FrameLayout.LayoutParams(-1, -1));
         playbackController = new PlaybackController(this, playerView);
 
-        webView = new WebView(this);
-        webView.setBackgroundColor(Color.BLACK);
-        webView.setVisibility(View.GONE);
-        content.addView(webView, new FrameLayout.LayoutParams(-1, -1));
-
         stateView = new ContentStateView(this, television);
         content.addView(stateView, new FrameLayout.LayoutParams(-1, -1));
-        stateView.showMessage(getString(R.string.preparing_watch));
+        stateView.showMessage(getString(R.string.searching_source, getString(R.string.provider_archive)));
+
+        nextButton = new Button(this);
+        nextButton.setText(R.string.play_next_episode);
+        nextButton.setAllCaps(false);
+        nextButton.setTextColor(Color.WHITE);
+        nextButton.setTextSize(television ? 18 : 16);
+        nextButton.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        nextButton.setBackground(rounded(PURPLE, dp(16), GOLD));
+        nextButton.setVisibility(View.GONE);
+        nextButton.setOnClickListener(v -> openNext());
+        FrameLayout.LayoutParams nextParams = new FrameLayout.LayoutParams(
+                dp(television ? 320 : 240), dp(television ? 64 : 56),
+                Gravity.CENTER_HORIZONTAL | Gravity.BOTTOM);
+        nextParams.bottomMargin = dp(40);
+        content.addView(nextButton, nextParams);
 
         if (television) back.requestFocus();
     }
 
-    @SuppressWarnings("SetJavaScriptEnabled")
-    private void configureWebView() {
-        WebSettings settings = webView.getSettings();
-        settings.setJavaScriptEnabled(true);
-        settings.setDomStorageEnabled(true);
-        settings.setMediaPlaybackRequiresUserGesture(false);
-        settings.setSupportMultipleWindows(false);
-        settings.setJavaScriptCanOpenWindowsAutomatically(false);
-        settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
-        settings.setAllowFileAccess(false);
-        settings.setAllowContentAccess(false);
-        settings.setUserAgentString(settings.getUserAgentString() + " LatchiPlay/" + BuildConfig.VERSION_NAME);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) settings.setSafeBrowsingEnabled(true);
-
-        CookieManager cookies = CookieManager.getInstance();
-        cookies.setAcceptCookie(true);
-        cookies.setAcceptThirdPartyCookies(webView, true);
-        cookies.setCookie("https://shooflive.net/", "sb_seen=1; Max-Age=31536000; Path=/; Secure");
-
-        webView.setWebViewClient(new WebViewClient() {
-            @Override
-            public void onPageStarted(WebView view, String url, Bitmap favicon) {
-                mainFrameFailed = false;
-                progress.setVisibility(View.VISIBLE);
-                webView.setVisibility(View.GONE);
-                stateView.showMessage(getString(R.string.preparing_watch));
-            }
-
-            @Override
-            public void onPageFinished(WebView view, String url) {
-                if (mainFrameFailed || isFinishing()) return;
-                progress.setVisibility(View.GONE);
-                stateView.hide();
-                webView.setVisibility(View.VISIBLE);
-                view.evaluateJavascript(CLEAN_PLAYER_JS, null);
-                topBar.setVisibility(View.GONE);
-                immersive(true);
-            }
-
-            @Override
-            public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
-                if (request.isForMainFrame()) showWatchError();
-            }
-
-            @Override
-            public void onReceivedHttpError(WebView view, WebResourceRequest request, WebResourceResponse response) {
-                if (request.isForMainFrame() && response.getStatusCode() >= 400) showWatchError();
-            }
-
-            @Override
-            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                Uri uri = request.getUrl();
-                if (request.isForMainFrame() && !isAllowedHost(uri.getHost())) {
-                    Toast.makeText(WatchActivity.this, R.string.external_window_blocked, Toast.LENGTH_SHORT).show();
-                    return true;
-                }
-                return false;
-            }
-        });
-
-        webView.setWebChromeClient(new WebChromeClient() {
-            @Override
-            public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture,
-                                          android.os.Message resultMsg) {
-                return false;
-            }
-
-            @Override
-            public void onShowCustomView(View view, CustomViewCallback callback) {
-                if (customView != null) {
-                    callback.onCustomViewHidden();
-                    return;
-                }
-                customView = view;
-                customCallback = callback;
-                chrome.setVisibility(View.GONE);
-                root.addView(view, match());
-                immersive(true);
-            }
-
-            @Override
-            public void onHideCustomView() {
-                hideCustomView();
-            }
-        });
-    }
-
-    private void resolveAndPreparePlayback() {
-        if (!DeviceUtils.hasInternetConnection(this)) {
-            showWatchError();
+    private void resolveNextProvider(final int fromIndex) {
+        if (fromIndex >= providers.size()) {
+            showNoSource();
             return;
         }
+        final int generation = ++resolveGeneration;
+        final ContentProvider provider = providers.get(fromIndex);
+        final int myIndex = fromIndex;
+        runOnUiThread(() -> {
+            if (!isCurrentResolve(generation)) return;
+            providerIndex = myIndex;
+            progress.setVisibility(View.VISIBLE);
+            stateView.showMessage(getString(R.string.searching_source, provider.label(this)));
+            sourceLabel.setText("");
+        });
 
-        int generation = ++resolverGeneration;
-        nativePlayback = false;
-        webFallbackActive = false;
-        webView.setVisibility(View.GONE);
-        playerView.setVisibility(View.GONE);
-        progress.setVisibility(View.VISIBLE);
-        stateView.showMessage(getString(R.string.preparing_watch));
-
-        serverResolver.resolve(currentUrl, new ServerResolver.Callback() {
+        provider.resolve(currentItem, new ContentProvider.Callback() {
             @Override
-            public void onResolved(ServerResolver.Result result) {
+            public void onResolved(PlaybackSource source, String providerLabel) {
                 runOnUiThread(() -> {
-                    if (generation != resolverGeneration || isFinishing() || isDestroyed()) return;
-                    resolvedSources = result.sources;
-                    sourceIndex = 0;
-                    if (resolvedSources.isEmpty()) loadWatchPage();
-                    else startNativePlayback(resolvedSources.get(0));
+                    if (!isCurrentResolve(generation)) return;
+                    startPlayback(source, providerLabel);
                 });
             }
 
             @Override
             public void onError() {
                 runOnUiThread(() -> {
-                    if (generation != resolverGeneration || isFinishing() || isDestroyed()) return;
-                    loadWatchPage();
+                    if (!isCurrentResolve(generation)) return;
+                    resolveNextProvider(myIndex + 1);
                 });
             }
         });
     }
 
-    private void tryNextSourceOrFallback() {
-        sourceIndex++;
-        if (sourceIndex < resolvedSources.size()) {
-            stateView.showMessage(getString(R.string.trying_next_server));
-            startNativePlayback(resolvedSources.get(sourceIndex));
-            return;
-        }
-        loadWatchPage();
-    }
-
-    private void startNativePlayback(PlaybackSource source) {
-        nativePlayback = true;
-        nativeReady = false;
-        webView.stopLoading();
-        webView.setVisibility(View.GONE);
-        playerView.setVisibility(View.GONE);
+    private void startPlayback(PlaybackSource source, String providerLabel) {
+        activeProvider = providerLabel;
         progress.setVisibility(View.VISIBLE);
         stateView.showMessage(getString(R.string.preparing_watch));
+        sourceLabel.setText(getString(R.string.source_prefix, providerLabel));
+        nextButton.setVisibility(View.GONE);
 
-        playbackController.prepare(currentUrl, source.url, source.type, source.headers,
+        playbackController.prepare(currentItem.pageUrl, source.url, source.type, source.headers,
                 new PlaybackController.Callback() {
                     @Override
                     public void onBuffering() {
                         progress.setVisibility(View.VISIBLE);
-                        if (!nativeReady) stateView.showMessage(getString(R.string.preparing_watch));
                     }
 
                     @Override
                     public void onReady() {
-                        nativeReady = true;
                         progress.setVisibility(View.GONE);
                         stateView.hide();
                         playerView.setVisibility(View.VISIBLE);
-                        topBar.setVisibility(View.GONE);
                         immersive(true);
-                        if (DeviceUtils.isTelevision(WatchActivity.this)) playerView.requestFocus();
+                        topBar.postDelayed(() -> {
+                            if (playbackController != null && playbackController.isActive()) {
+                                topBar.setVisibility(View.GONE);
+                            }
+                        }, 2500);
                     }
 
                     @Override
                     public void onEnded() {
-                        progress.setVisibility(View.GONE);
-                        updateHistoryFromPlayer();
-                        playerView.showController();
-                        if (nextItem != null) {
-                            stateView.showAction(getString(R.string.next_episode_available),
-                                    getString(R.string.play_next_episode), view -> openNextEpisode());
-                        }
+                        handleEnded();
                     }
 
                     @Override
                     public void onError() {
-                        nativeReady = false;
-                        progress.setVisibility(View.GONE);
-                        playerView.setVisibility(View.GONE);
-                        tryNextSourceOrFallback();
+                        failover();
                     }
                 });
     }
 
-    private void loadWatchPage() {
-        nativePlayback = false;
-        webFallbackActive = true;
-        immersive(false);
-        topBar.setVisibility(View.VISIBLE);
-        playerView.setVisibility(View.GONE);
-        if (playbackController.isActive()) playbackController.release();
-        if (!DeviceUtils.hasInternetConnection(this)) {
-            showWatchError();
-            return;
-        }
-        mainFrameFailed = false;
-        progress.setVisibility(View.VISIBLE);
-        webView.setVisibility(View.GONE);
-        stateView.showMessage(getString(R.string.preparing_watch));
-        webView.loadUrl(currentUrl);
-    }
-
-    private void showWatchError() {
-        mainFrameFailed = true;
-        immersive(false);
-        topBar.setVisibility(View.VISIBLE);
-        progress.setVisibility(View.GONE);
-        webView.setVisibility(View.GONE);
-        String message = DeviceUtils.hasInternetConnection(this)
-                ? getString(R.string.load_watch_failed)
-                : getString(R.string.no_internet);
-        stateView.showAction(message, getString(R.string.retry), view -> {
-            if (webFallbackActive) loadWatchPage();
-            else resolveAndPreparePlayback();
+    private void failover() {
+        runOnUiThread(() -> {
+            progress.setVisibility(View.GONE);
+            resolveNextProvider(providerIndex + 1);
         });
     }
 
-    private void updateHistoryFromPlayer() {
-        if (currentItem == null || historyStore == null || playbackController == null ||
-                !playbackController.isActive()) return;
-        historyStore.update(currentItem, playbackController.getCurrentPosition(),
-                playbackController.getDuration());
+    private void handleEnded() {
+        runOnUiThread(() -> {
+            progress.setVisibility(View.GONE);
+            playerView.setVisibility(View.GONE);
+            sourceLabel.setText("");
+            if (nextItem != null) {
+                nextButton.setVisibility(View.VISIBLE);
+                if (DeviceUtils.isTelevision(this)) nextButton.requestFocus();
+            } else {
+                stateView.showAction(getString(R.string.ended_message),
+                        getString(R.string.play_again), v -> resolveNextProvider(0));
+            }
+        });
     }
 
-    private void openNextEpisode() {
+    private void openNext() {
         if (nextItem == null) return;
         Intent intent = new Intent(this, WatchActivity.class);
-        intent.putExtra("url", nextItem.pageUrl);
-        intent.putExtra("title", nextItem.title);
         intent.putExtra("item", nextItem);
+        intent.putExtra("title", nextItem.title);
         startActivity(intent);
         finish();
     }
 
-    private boolean isDirectMediaUrl(String value) {
-        if (value == null) return false;
-        Uri uri = Uri.parse(value);
-        if (!"https".equalsIgnoreCase(uri.getScheme()) || uri.getHost() == null) return false;
-        String path = uri.getPath() == null ? "" : uri.getPath().toLowerCase();
-        return path.endsWith(".m3u8") || path.endsWith(".mp4") || path.endsWith(".mpd");
+    private void showNoSource() {
+        progress.setVisibility(View.GONE);
+        playerView.setVisibility(View.GONE);
+        sourceLabel.setText("");
+        stateView.showAction(getString(R.string.no_source_found), getString(R.string.retry),
+                v -> resolveNextProvider(0));
     }
 
-    private boolean isAllowedUrl(String value) {
-        if (value == null) return false;
-        Uri uri = Uri.parse(value);
-        return "https".equalsIgnoreCase(uri.getScheme()) && isAllowedHost(uri.getHost());
-    }
-
-    private boolean isAllowedHost(String host) {
-        return host != null && (host.equalsIgnoreCase(ALLOWED_HOST) ||
-                host.toLowerCase().endsWith("." + ALLOWED_HOST));
-    }
-
-    private void hideCustomView() {
-        if (customView == null) return;
-        root.removeView(customView);
-        customView = null;
-        chrome.setVisibility(View.VISIBLE);
-        if (customCallback != null) customCallback.onCustomViewHidden();
-        customCallback = null;
-        immersive(false);
-    }
-
-    private void immersive(boolean hide) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            WindowInsetsController controller = getWindow().getInsetsController();
-            if (controller != null) {
-                if (hide) controller.hide(WindowInsets.Type.systemBars());
-                else controller.show(WindowInsets.Type.systemBars());
-            }
-        } else {
-            getWindow().getDecorView().setSystemUiVisibility(hide ? 5894 : View.SYSTEM_UI_FLAG_VISIBLE);
-        }
-    }
-
-    @Override
-    public void onBackPressed() {
-        if (customView != null) hideCustomView();
-        else if (nativePlayback) finish();
-        else if (webView.canGoBack()) webView.goBack();
-        else finish();
+    private boolean isCurrentResolve(int generation) {
+        return generation == resolveGeneration && !isFinishing() && !isDestroyed();
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        if (nativePlayback && playbackController != null) playbackController.resume();
-        else if (webView != null) webView.onResume();
+        if (playbackController != null && playbackController.isActive()) {
+            playbackController.resume();
+            immersive(true);
+        }
     }
 
     @Override
     protected void onPause() {
-        if (nativePlayback && playbackController != null) {
-            updateHistoryFromPlayer();
+        if (playbackController != null && playbackController.isActive()) {
+            historyStore.update(currentItem, playbackController.getCurrentPosition(),
+                    playbackController.getDuration());
             playbackController.pause();
-        } else if (webView != null) webView.onPause();
+        }
         super.onPause();
     }
 
     @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus && playbackController != null && playbackController.isActive()) {
+            immersive(true);
+        }
+    }
+
+    @Override
     protected void onDestroy() {
-        resolverGeneration++;
-        immersive(false);
-        updateHistoryFromPlayer();
-        if (serverResolver != null) serverResolver.destroy();
-        if (playbackController != null) playbackController.release();
-        if (customView != null) hideCustomView();
-        if (webView != null) {
-            webView.stopLoading();
-            webView.setWebChromeClient(null);
-            webView.setWebViewClient(null);
-            webView.removeAllViews();
-            webView.destroy();
+        if (playbackController != null) {
+            playbackController.release();
+            playbackController = null;
         }
         super.onDestroy();
     }
 
-    private FrameLayout.LayoutParams match() {
-        return new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT);
+    private void immersive(boolean enabled) {
+        Window window = getWindow();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            WindowInsetsController controller = window.getInsetsController();
+            if (controller != null) {
+                if (enabled) {
+                    controller.hide(WindowInsets.Type.systemBars());
+                    controller.setSystemBarsBehavior(
+                            WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+                } else {
+                    controller.show(WindowInsets.Type.systemBars());
+                }
+            }
+        } else {
+            @SuppressWarnings("deprecation")
+            int flags = enabled
+                    ? (View.SYSTEM_UI_FLAG_FULLSCREEN
+                    | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                    | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY)
+                    : 0;
+            window.getDecorView().setSystemUiVisibility(flags);
+        }
+    }
+
+    private android.graphics.drawable.GradientDrawable rounded(int color, int radius, int stroke) {
+        android.graphics.drawable.GradientDrawable d = new android.graphics.drawable.GradientDrawable();
+        d.setColor(color);
+        d.setCornerRadius(radius);
+        d.setStroke(dp(1), stroke);
+        return d;
     }
 
     private int dp(int value) {

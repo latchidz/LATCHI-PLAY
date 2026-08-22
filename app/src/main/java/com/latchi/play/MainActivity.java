@@ -29,16 +29,24 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Home screen backed by the TMDB API: trending, popular movies, popular series,
+ * search and genre discovery. Playback sources are handled separately by providers.
+ */
 public class MainActivity extends Activity {
-    private static final String BASE = "https://shooflive.net/";
     private static final int BG = Color.rgb(7, 6, 12);
     private static final int SURFACE = Color.rgb(18, 15, 25);
     private static final int GOLD = Color.rgb(246, 198, 75);
     private static final int PURPLE = Color.rgb(124, 58, 237);
 
+    private enum Feed {
+        HOME, MOVIES, SERIES, SEARCH, GENRE
+    }
+
     private boolean television;
-    private CatalogClient client;
-    private CatalogCache catalogCache;
+    private boolean configuredBefore;
+    private TmdbClient tmdb;
+    private AppPrefs prefs;
     private PosterAdapter adapter;
     private RecyclerView grid;
     private ProgressBar progress;
@@ -47,29 +55,51 @@ public class MainActivity extends Activity {
     private TextView screenTitle;
     private ContentStateView stateView;
     private UpdateManager updateManager;
+
     private final List<CatalogItem> currentItems = new ArrayList<>();
-    private int requestGeneration;
-    private String activeUrl;
-    private String activeTitle;
-    private String nextPageUrl;
+    private Feed feed = Feed.HOME;
+    private String query = "";
+    private int genreId;
+    private String genreName = "";
+    private String genreMediaType = "movie";
+    private int page;
+    private boolean hasMore;
     private boolean loading;
     private boolean loadingNext;
+    private int requestGeneration;
 
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         television = DeviceUtils.isTelevision(this);
-        setRequestedOrientation(television ? ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE : ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
+        setRequestedOrientation(television ? ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                : ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
         getWindow().setStatusBarColor(BG);
         getWindow().setNavigationBarColor(BG);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
-        client = new CatalogClient();
-        catalogCache = new CatalogCache(getApplicationContext());
+        tmdb = new TmdbClient(this);
+        prefs = new AppPrefs(this);
+        configuredBefore = prefs.hasTmdbKey();
         buildUi();
         updateManager = new UpdateManager(this);
         updateManager.checkAutomatically();
-        loadPage(BASE, getString(R.string.latest_additions));
+        if (prefs.hasTmdbKey()) {
+            loadFeed(Feed.HOME);
+        } else {
+            showKeyMissing();
+        }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (updateManager != null) updateManager.resumePendingInstall();
+        boolean nowConfigured = prefs.hasTmdbKey();
+        if (!configuredBefore && nowConfigured) {
+            configuredBefore = true;
+            loadFeed(Feed.HOME);
+        }
     }
 
     private void buildUi() {
@@ -121,14 +151,15 @@ public class MainActivity extends Activity {
             scroll.addView(nav, new HorizontalScrollView.LayoutParams(-2, -1));
             root.addView(scroll, new LinearLayout.LayoutParams(-1, dp(58)));
         }
-        addNav(nav, getString(R.string.home), v ->
-                loadPage(BASE, getString(R.string.latest_additions)));
-        addNav(nav, getString(R.string.movies), v -> showCategoryDialog(true));
-        addNav(nav, getString(R.string.series), v -> showCategoryDialog(false));
+        addNav(nav, getString(R.string.home), v -> loadFeed(Feed.HOME));
+        addNav(nav, getString(R.string.movies), v -> showGenreDialog(true));
+        addNav(nav, getString(R.string.series), v -> showGenreDialog(false));
         addNav(nav, getString(R.string.favorites), v ->
                 startActivity(new Intent(this, FavoritesActivity.class)));
         addNav(nav, getString(R.string.history), v ->
                 startActivity(new Intent(this, HistoryActivity.class)));
+        addNav(nav, getString(R.string.settings), v ->
+                startActivity(new Intent(this, SettingsActivity.class)));
         addNav(nav, getString(R.string.update), v -> updateManager.checkManually());
 
         progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
@@ -160,156 +191,171 @@ public class MainActivity extends Activity {
         paginationProgress.setIndeterminateTintList(android.content.res.ColorStateList.valueOf(PURPLE));
         paginationProgress.setVisibility(View.GONE);
         FrameLayout.LayoutParams progressParams = new FrameLayout.LayoutParams(
-                dp(television ? 48 : 40), dp(television ? 48 : 40), Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+                dp(television ? 48 : 40), dp(television ? 48 : 40),
+                Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
         progressParams.bottomMargin = dp(12);
         content.addView(paginationProgress, progressParams);
 
         paginationRetry = actionButton(getString(R.string.load_more));
         paginationRetry.setVisibility(View.GONE);
-        paginationRetry.setOnClickListener(view -> loadNextPage());
+        paginationRetry.setOnClickListener(view -> loadMore());
         FrameLayout.LayoutParams retryParams = new FrameLayout.LayoutParams(
-                dp(television ? 230 : 180), dp(television ? 54 : 46), Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+                dp(television ? 230 : 180), dp(television ? 54 : 46),
+                Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
         retryParams.bottomMargin = dp(12);
         content.addView(paginationRetry, retryParams);
 
         grid.addOnScrollListener(new RecyclerView.OnScrollListener() {
             @Override
             public void onScrolled(RecyclerView recyclerView, int dx, int dy) {
-                if (dy <= 0 || loading || loadingNext || nextPageUrl == null) return;
+                if (dy <= 0 || loading || loadingNext || !hasMore) return;
                 GridLayoutManager manager = (GridLayoutManager) recyclerView.getLayoutManager();
                 if (manager == null) return;
                 int threshold = television ? 10 : 6;
                 if (manager.findLastVisibleItemPosition() >= adapter.getItemCount() - threshold) {
-                    loadNextPage();
+                    loadMore();
                 }
             }
         });
     }
 
-    private void loadPage(String url, String title) {
-        if (loading && url.equals(activeUrl)) return;
+    private void showKeyMissing() {
+        screenTitle.setText(getString(R.string.app_name));
+        progress.setVisibility(View.GONE);
+        paginationProgress.setVisibility(View.GONE);
+        paginationRetry.setVisibility(View.GONE);
+        grid.setVisibility(View.GONE);
+        stateView.showAction(getString(R.string.tmdb_key_missing),
+                getString(R.string.open_settings),
+                v -> startActivity(new Intent(this, SettingsActivity.class)));
+    }
 
-        activeUrl = url;
-        activeTitle = title;
+    private void loadFeed(Feed target) {
+        loadFeed(target, "", 0);
+    }
+
+    private void loadFeed(Feed target, String searchQuery, int genre) {
+        if (loading) return;
+
+        feed = target;
+        query = searchQuery;
+        genreId = genre;
+        page = 0;
+        hasMore = false;
         loading = true;
         loadingNext = false;
-        nextPageUrl = null;
         currentItems.clear();
         int generation = ++requestGeneration;
 
-        screenTitle.setText(title);
         progress.setVisibility(View.VISIBLE);
         paginationProgress.setVisibility(View.GONE);
         paginationRetry.setVisibility(View.GONE);
         grid.setVisibility(View.GONE);
         stateView.showMessage(getString(R.string.loading_content));
 
-        catalogCache.read(url, entry -> runOnUiThread(() -> {
-            if (!isCurrentRequest(generation)) return;
-            boolean hasCache = entry != null && !entry.items.isEmpty();
-            if (hasCache) {
-                currentItems.addAll(entry.items);
-                nextPageUrl = entry.nextPageUrl;
-                adapter.submit(currentItems);
-                stateView.hide();
-                grid.setVisibility(View.VISIBLE);
-                updatePaginationControl();
-            }
+        if (!prefs.hasTmdbKey()) {
+            loading = false;
+            progress.setVisibility(View.GONE);
+            showKeyMissing();
+            return;
+        }
 
-            if (!DeviceUtils.hasInternetConnection(this)) {
-                loading = false;
-                progress.setVisibility(View.GONE);
-                if (hasCache) screenTitle.setText(getString(R.string.offline_title, title));
-                else showLoadError(url, title, getString(R.string.no_internet));
-                return;
-            }
-            fetchFirstPage(url, title, generation, hasCache);
-        }));
-    }
+        if (target == Feed.MOVIES || target == Feed.SERIES) {
+            screenTitle.setText(target == Feed.MOVIES
+                    ? getString(R.string.popular_movies) : getString(R.string.popular_series));
+        } else if (target == Feed.HOME) {
+            screenTitle.setText(getString(R.string.trending_week));
+        } else if (target == Feed.GENRE) {
+            screenTitle.setText(genreName.isEmpty() ? getString(R.string.movies) : genreName);
+        } else {
+            screenTitle.setText(getString(R.string.search_results, searchQuery));
+        }
 
-    private void fetchFirstPage(String url, String title, int generation, boolean hasCache) {
-        client.load(url, new CatalogClient.Callback() {
+        TmdbClient.Callback<List<CatalogItem>> callback = new TmdbClient.Callback<List<CatalogItem>>() {
             @Override
-            public void onSuccess(CatalogPage page) {
+            public void onSuccess(List<CatalogItem> items) {
                 runOnUiThread(() -> {
                     if (!isCurrentRequest(generation)) return;
                     loading = false;
                     progress.setVisibility(View.GONE);
-                    screenTitle.setText(title);
-                    if (page.items.isEmpty() && hasCache && !currentItems.isEmpty()) {
-                        screenTitle.setText(getString(R.string.cached_title, title));
-                        return;
-                    }
-                    currentItems.clear();
-                    currentItems.addAll(page.items);
-                    nextPageUrl = page.nextPageUrl;
-
-                    if (currentItems.isEmpty()) {
-                        grid.setVisibility(View.GONE);
+                    page = 1;
+                    hasMore = items.size() >= 20;
+                    if (items.isEmpty()) {
                         stateView.showMessage(getString(R.string.no_results));
                         return;
                     }
-
+                    currentItems.addAll(items);
                     stateView.hide();
                     grid.setVisibility(View.VISIBLE);
                     adapter.submit(currentItems);
-                    catalogCache.write(url, currentItems, nextPageUrl);
                     updatePaginationControl();
                     focusFirstCard();
                 });
             }
 
             @Override
-            public void onError(CatalogClient.Failure failure) {
+            public void onError() {
                 runOnUiThread(() -> {
                     if (!isCurrentRequest(generation)) return;
                     loading = false;
                     progress.setVisibility(View.GONE);
-                    if (hasCache && !currentItems.isEmpty()) {
-                        screenTitle.setText(getString(R.string.offline_title, title));
-                        return;
-                    }
-                    String message = isNetworkFailure(failure)
-                            ? getString(R.string.no_internet)
-                            : getString(R.string.load_content_failed);
-                    showLoadError(url, title, message);
+                    showLoadError();
                 });
             }
-        });
+        };
+
+        switch (target) {
+            case HOME:
+                tmdb.trending(1, callback);
+                break;
+            case MOVIES:
+                tmdb.popular("movie", 1, callback);
+                break;
+            case SERIES:
+                tmdb.popular("tv", 1, callback);
+                break;
+            case SEARCH:
+                tmdb.search(searchQuery, 1, callback);
+                break;
+            case GENRE:
+            default:
+                tmdb.discover(genreMediaType, genre, 1, callback);
+                break;
+        }
     }
 
-    private void loadNextPage() {
-        if (loading || loadingNext || nextPageUrl == null || activeUrl == null) return;
+    private void loadMore() {
+        if (loading || loadingNext || !hasMore) return;
         if (!DeviceUtils.hasInternetConnection(this)) {
-            screenTitle.setText(getString(R.string.offline_title, activeTitle));
+            screenTitle.setText(getString(R.string.offline_title, screenTitle.getText()));
             paginationRetry.setText(R.string.retry_more);
             paginationRetry.setVisibility(View.VISIBLE);
             return;
         }
 
-        final String requestedPage = nextPageUrl;
+        final int nextPage = page + 1;
         final int generation = requestGeneration;
         loadingNext = true;
         paginationRetry.setVisibility(View.GONE);
         paginationProgress.setVisibility(View.VISIBLE);
 
-        client.load(requestedPage, new CatalogClient.Callback() {
+        TmdbClient.Callback<List<CatalogItem>> callback = new TmdbClient.Callback<List<CatalogItem>>() {
             @Override
-            public void onSuccess(CatalogPage page) {
+            public void onSuccess(List<CatalogItem> items) {
                 runOnUiThread(() -> {
                     if (!isCurrentRequest(generation)) return;
                     loadingNext = false;
                     paginationProgress.setVisibility(View.GONE);
-                    mergeItems(page.items);
-                    nextPageUrl = requestedPage.equals(page.nextPageUrl) ? null : page.nextPageUrl;
+                    mergeItems(items);
+                    page = nextPage;
+                    hasMore = items.size() >= 20;
                     adapter.submit(currentItems);
-                    catalogCache.write(activeUrl, currentItems, nextPageUrl);
                     updatePaginationControl();
                 });
             }
 
             @Override
-            public void onError(CatalogClient.Failure failure) {
+            public void onError() {
                 runOnUiThread(() -> {
                     if (!isCurrentRequest(generation)) return;
                     loadingNext = false;
@@ -318,12 +364,31 @@ public class MainActivity extends Activity {
                     paginationRetry.setVisibility(View.VISIBLE);
                 });
             }
-        });
+        };
+
+        switch (feed) {
+            case HOME:
+                tmdb.trending(nextPage, callback);
+                break;
+            case MOVIES:
+                tmdb.popular("movie", nextPage, callback);
+                break;
+            case SERIES:
+                tmdb.popular("tv", nextPage, callback);
+                break;
+            case SEARCH:
+                tmdb.search(query, nextPage, callback);
+                break;
+            case GENRE:
+            default:
+                tmdb.discover(genreMediaType, genreId, nextPage, callback);
+                break;
+        }
     }
 
     private void updatePaginationControl() {
         paginationProgress.setVisibility(View.GONE);
-        if (nextPageUrl == null) {
+        if (!hasMore) {
             paginationRetry.setVisibility(View.GONE);
         } else {
             paginationRetry.setText(R.string.load_more);
@@ -339,9 +404,13 @@ public class MainActivity extends Activity {
         currentItems.addAll(unique.values());
     }
 
-    private boolean isNetworkFailure(CatalogClient.Failure failure) {
-        return failure.type == CatalogClient.FailureType.NETWORK ||
-                failure.type == CatalogClient.FailureType.TIMEOUT;
+    private void showLoadError() {
+        paginationProgress.setVisibility(View.GONE);
+        paginationRetry.setVisibility(View.GONE);
+        grid.setVisibility(View.GONE);
+        stateView.showAction(getString(R.string.load_content_failed),
+                getString(R.string.retry),
+                v -> loadFeed(feed, query, genreId));
     }
 
     private void focusFirstCard() {
@@ -357,56 +426,85 @@ public class MainActivity extends Activity {
         return generation == requestGeneration && !isFinishing() && !isDestroyed();
     }
 
-    private void showLoadError(String url, String title, String message) {
-        progress.setVisibility(View.GONE);
-        paginationProgress.setVisibility(View.GONE);
-        paginationRetry.setVisibility(View.GONE);
-        grid.setVisibility(View.GONE);
-        stateView.showAction(message, getString(R.string.retry), view -> loadPage(url, title));
-    }
-
     private void openDetails(CatalogItem item) {
         Intent intent = new Intent(this, DetailActivity.class);
         intent.putExtra("item", item);
         startActivity(intent);
     }
 
-    private void showCategoryDialog(boolean movies) {
-        String[] labels = movies
-                ? new String[]{"أفلام أجنبية", "أفلام عربية", "أفلام تركية", "أفلام آسيوية", "أفلام هندية", "أنيميشن"}
-                : new String[]{"مسلسلات عربية", "مسلسلات تركية", "مسلسلات أجنبية", "مسلسلات آسيوية", "مدبلجة", "قصيرة", "رمضان 2026"};
-        String[] slugs = movies
-                ? new String[]{"foreign-movies", "arabic-movies", "turkish-movies", "asian-movies", "indian-movies", "animation-movies"}
-                : new String[]{"arabic-series", "turkish-series", "foreign-series", "asian-series", "dubbed-series", "short-series", "ramadan-series-2026"};
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle(movies ? "اختر فئة الأفلام" : "اختر فئة المسلسلات")
-                .setItems(labels, (d, which) -> loadPage(BASE + slugs[which] + "/", labels[which]))
-                .setNegativeButton("إلغاء", null).create();
-        dialog.setOnShowListener(v -> {
-            if (television) dialog.getListView().requestFocus();
+    private void showGenreDialog(boolean movies) {
+        if (!DeviceUtils.hasInternetConnection(this)) {
+            screenTitle.setText(getString(R.string.offline_title, screenTitle.getText()));
+            return;
+        }
+        progress.setVisibility(View.VISIBLE);
+        tmdb.genreList(movies ? "movie" : "tv", new TmdbClient.Callback<List<TmdbClient.Genre>>() {
+            @Override
+            public void onSuccess(List<TmdbClient.Genre> genres) {
+                runOnUiThread(() -> {
+                    progress.setVisibility(View.GONE);
+                    if (isFinishing() || isDestroyed() || genres.isEmpty()) return;
+                    String allLabel = movies ? getString(R.string.all_movies) : getString(R.string.all_series);
+                    String[] labels = new String[genres.size() + 1];
+                    labels[0] = allLabel;
+                    for (int i = 0; i < genres.size(); i++) labels[i + 1] = genres.get(i).name;
+                    AlertDialog dialog = new AlertDialog.Builder(MainActivity.this)
+                            .setTitle(movies ? R.string.choose_genre_movies : R.string.choose_genre_series)
+                            .setItems(labels, (d, which) -> {
+                                if (which == 0) {
+                                    loadFeed(movies ? Feed.MOVIES : Feed.SERIES);
+                                    return;
+                                }
+                                TmdbClient.Genre genre = genres.get(which - 1);
+                                genreMediaType = movies ? "movie" : "tv";
+                                genreId = genre.id;
+                                genreName = genre.name;
+                                loadFeed(Feed.GENRE, "", genre.id);
+                            })
+                            .setNegativeButton(R.string.cancel, null)
+                            .create();
+                    dialog.setOnShowListener(v -> {
+                        if (television) dialog.getListView().requestFocus();
+                    });
+                    dialog.show();
+                });
+            }
+
+            @Override
+            public void onError() {
+                runOnUiThread(() -> {
+                    progress.setVisibility(View.GONE);
+                    ToastMessage(getString(R.string.load_content_failed));
+                });
+            }
         });
-        dialog.show();
+    }
+
+    private void ToastMessage(String message) {
+        android.widget.Toast.makeText(this, message, android.widget.Toast.LENGTH_SHORT).show();
     }
 
     private void showSearch() {
         EditText input = new EditText(this);
-        input.setHint("اسم الفيلم أو المسلسل");
+        input.setHint(R.string.search_hint);
         input.setSingleLine(true);
         input.setImeOptions(EditorInfo.IME_ACTION_SEARCH);
         input.setTextDirection(View.TEXT_DIRECTION_RTL);
         input.setPadding(dp(16), dp(8), dp(16), dp(8));
-        AlertDialog dialog = new AlertDialog.Builder(this).setTitle("البحث")
-                .setView(input).setNegativeButton("إلغاء", null).setPositiveButton("بحث", null).create();
+        AlertDialog dialog = new AlertDialog.Builder(this).setTitle(R.string.search)
+                .setView(input).setNegativeButton(R.string.cancel, null)
+                .setPositiveButton(R.string.search, null).create();
         dialog.setOnShowListener(v -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(b -> {
-            String query = input.getText().toString().trim();
-            if (!query.isEmpty()) {
-                loadPage(BASE + "?s=" + Uri.encode(query), "نتائج: " + query);
+            String text = input.getText().toString().trim();
+            if (!text.isEmpty()) {
+                loadFeed(Feed.SEARCH, text, 0);
                 dialog.dismiss();
             }
         }));
         input.setOnEditorActionListener((v, action, event) -> {
             if (action == EditorInfo.IME_ACTION_SEARCH) {
-                dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick(); return true;
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
+                return true;
             }
             return false;
         });
@@ -427,46 +525,58 @@ public class MainActivity extends Activity {
         button.setBackground(pill(Color.rgb(29, 24, 40), dp(14), Color.rgb(75, 58, 96)));
         if (television) {
             button.setOnFocusChangeListener((v, focused) -> {
-                v.setBackground(pill(focused ? PURPLE : Color.rgb(29, 24, 40), dp(14), focused ? GOLD : Color.rgb(75, 58, 96)));
-                v.animate().scaleX(focused ? 1.06f : 1f).scaleY(focused ? 1.06f : 1f).setDuration(120).start();
+                v.setBackground(pill(focused ? PURPLE : Color.rgb(29, 24, 40), dp(14),
+                        focused ? GOLD : Color.rgb(75, 58, 96)));
+                v.animate().scaleX(focused ? 1.06f : 1f).scaleY(focused ? 1.06f : 1f)
+                        .setDuration(120).start();
             });
         }
         button.setOnClickListener(listener);
         LinearLayout.LayoutParams params = television
                 ? new LinearLayout.LayoutParams(0, -1, 1)
-                : new LinearLayout.LayoutParams(dp(92), -1);
+                : new LinearLayout.LayoutParams(dp(96), -1);
         params.setMargins(dp(4), 0, dp(4), 0);
         nav.addView(button, params);
     }
 
     private Button actionButton(String label) {
-        Button b = new Button(this); b.setText(label); b.setAllCaps(false); b.setTextColor(Color.WHITE);
-        b.setTextSize(television ? 15 : 12); b.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-        b.setBackground(pill(PURPLE, dp(14), GOLD)); b.setFocusable(television); b.setFocusableInTouchMode(television); return b;
+        Button b = new Button(this);
+        b.setText(label);
+        b.setAllCaps(false);
+        b.setTextColor(Color.WHITE);
+        b.setTextSize(television ? 15 : 12);
+        b.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        b.setBackground(pill(PURPLE, dp(14), GOLD));
+        b.setFocusable(television);
+        b.setFocusableInTouchMode(television);
+        return b;
     }
 
     private TextView text(String value, int size, int color, boolean bold) {
-        TextView v = new TextView(this); v.setText(value); v.setTextSize(size); v.setTextColor(color);
-        if (bold) v.setTypeface(android.graphics.Typeface.DEFAULT_BOLD); return v;
+        TextView v = new TextView(this);
+        v.setText(value);
+        v.setTextSize(size);
+        v.setTextColor(color);
+        if (bold) v.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        return v;
     }
 
     private GradientDrawable pill(int color, int radius, int stroke) {
-        GradientDrawable d = new GradientDrawable(); d.setColor(color); d.setCornerRadius(radius); d.setStroke(dp(1), stroke); return d;
+        GradientDrawable d = new GradientDrawable();
+        d.setColor(color);
+        d.setCornerRadius(radius);
+        d.setStroke(dp(1), stroke);
+        return d;
     }
 
-    private int dp(int v) { return Math.round(v * getResources().getDisplayMetrics().density); }
-
-    @Override
-    protected void onResume() {
-        super.onResume();
-        if (updateManager != null) updateManager.resumePendingInstall();
+    private int dp(int value) {
+        return Math.round(value * getResources().getDisplayMetrics().density);
     }
 
     @Override
     protected void onDestroy() {
         requestGeneration++;
-        if (client != null) client.destroy();
-        if (catalogCache != null) catalogCache.destroy();
+        if (tmdb != null) tmdb.destroy();
         if (updateManager != null) updateManager.destroy();
         super.onDestroy();
     }

@@ -12,12 +12,11 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
-import java.util.Set;
-import java.util.TreeSet;
 
-/** Inline seasons and episodes shown directly inside a series details page. */
+/**
+ * Inline seasons and episodes inside a series details page, driven by TMDB.
+ */
 public final class SeriesEpisodesPanel extends LinearLayout {
     public interface Listener {
         void onReady(List<CatalogItem> episodes);
@@ -26,23 +25,32 @@ public final class SeriesEpisodesPanel extends LinearLayout {
 
     private static final int PURPLE = Color.rgb(124, 58, 237);
     private static final int GOLD = Color.rgb(246, 198, 75);
+    private static final int SURFACE = Color.rgb(22, 18, 31);
+
     private final Activity activity;
     private final boolean television;
-    private final CatalogItem series;
+    private final long tvId;
+    private final List<TmdbDetail.TmdbSeason> seasons;
     private final Listener listener;
-    private final CatalogClient client = new CatalogClient();
+    private final TmdbClient tmdb;
     private final LinearLayout seasonsRow;
     private final GridLayout episodesGrid;
     private final TextView status;
+    private final List<Button> seasonButtons = new ArrayList<>();
     private final List<CatalogItem> allEpisodes = new ArrayList<>();
-    private final List<CatalogItem> visibleEpisodes = new ArrayList<>();
+    private final List<CatalogItem> currentSeasonEpisodes = new ArrayList<>();
+    private int activeSeason = -1;
 
-    public SeriesEpisodesPanel(Activity activity, boolean television, CatalogItem series, Listener listener) {
+    public SeriesEpisodesPanel(Activity activity, boolean television, long tvId,
+                               List<TmdbDetail.TmdbSeason> seasons, Listener listener) {
         super(activity);
         this.activity = activity;
         this.television = television;
-        this.series = series;
+        this.tvId = tvId;
+        this.seasons = seasons == null ? new ArrayList<>() : seasons;
         this.listener = listener;
+        this.tmdb = new TmdbClient(activity);
+
         setOrientation(VERTICAL);
         setPadding(0, dp(20), 0, dp(10));
 
@@ -63,157 +71,157 @@ public final class SeriesEpisodesPanel extends LinearLayout {
         statusParams.setMargins(0, dp(10), 0, dp(10));
         addView(status, statusParams);
 
-        HorizontalScrollView scroll = new HorizontalScrollView(activity);
-        scroll.setHorizontalScrollBarEnabled(false);
         seasonsRow = new LinearLayout(activity);
         seasonsRow.setOrientation(HORIZONTAL);
         seasonsRow.setGravity(Gravity.RIGHT);
-        scroll.addView(seasonsRow, new HorizontalScrollView.LayoutParams(-2, dp(television ? 58 : 50)));
-        addView(scroll, new LayoutParams(-1, dp(television ? 62 : 54)));
-
         episodesGrid = new GridLayout(activity);
         episodesGrid.setColumnCount(television ? 5 : 3);
         episodesGrid.setAlignmentMode(GridLayout.ALIGN_BOUNDS);
         episodesGrid.setUseDefaultMargins(false);
+
+        if (this.seasons.isEmpty()) {
+            status.setText(R.string.no_episodes);
+            return;
+        }
+
+        HorizontalScrollView scroll = new HorizontalScrollView(activity);
+        scroll.setHorizontalScrollBarEnabled(false);
+        scroll.addView(seasonsRow, new HorizontalScrollView.LayoutParams(-2, dp(television ? 58 : 50)));
+        addView(scroll, new LayoutParams(-1, dp(television ? 62 : 54)));
+
         LayoutParams gridParams = new LayoutParams(-1, -2);
         gridParams.setMargins(0, dp(8), 0, 0);
         addView(episodesGrid, gridParams);
+
+        renderSeasons();
+        selectSeason(this.seasons.get(0).seasonNumber);
     }
 
-    public void load() {
-        if (!DeviceUtils.hasInternetConnection(activity)) {
-            showRetry(activity.getString(R.string.no_internet));
-            return;
+    private void renderSeasons() {
+        seasonButtons.clear();
+        for (TmdbDetail.TmdbSeason season : seasons) {
+            Button chip = new Button(activity);
+            chip.setText(getStringSeason(season.seasonNumber));
+            chip.setAllCaps(false);
+            chip.setTextColor(Color.WHITE);
+            chip.setTextSize(television ? 15 : 13);
+            chip.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+            chip.setFocusable(television);
+            chip.setFocusableInTouchMode(television);
+            chip.setOnClickListener(v -> selectSeason(season.seasonNumber));
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                    dp(television ? 130 : 104), -1);
+            params.setMargins(dp(4), 0, dp(4), 0);
+            seasonsRow.addView(chip, params);
+            seasonButtons.add(chip);
         }
+        updateSeasonHighlight();
+    }
+
+    private void selectSeason(int seasonNumber) {
+        activeSeason = seasonNumber;
+        updateSeasonHighlight();
+        currentSeasonEpisodes.clear();
+        episodesGrid.removeAllViews();
         status.setText(R.string.loading_episodes);
-        client.load(series.pageUrl, new CatalogClient.Callback() {
+
+        tmdb.episodes(tvId, seasonNumber, new TmdbClient.Callback<List<CatalogItem>>() {
             @Override
-            public void onSuccess(CatalogPage page) {
+            public void onSuccess(List<CatalogItem> episodes) {
                 activity.runOnUiThread(() -> {
-                    if (activity.isFinishing() || activity.isDestroyed()) return;
-                    allEpisodes.clear();
-                    for (CatalogItem item : page.items) {
-                        if ("episode".equals(item.type)) allEpisodes.add(item);
-                    }
-                    if (allEpisodes.isEmpty()) {
-                        status.setText(R.string.no_episodes);
-                        seasonsRow.removeAllViews();
-                        episodesGrid.removeAllViews();
+                    if (activeSeason != seasonNumber || episodes.isEmpty()) {
+                        if (activeSeason == seasonNumber) {
+                            status.setText(R.string.no_episodes);
+                        }
                         return;
                     }
-                    buildSeasons();
+                    status.setText(getStringSeason(seasonNumber));
+                    currentSeasonEpisodes.addAll(episodes);
+                    allEpisodes.clear();
+                    allEpisodes.addAll(currentSeasonEpisodes);
+                    renderEpisodes(episodes);
                     listener.onReady(new ArrayList<>(allEpisodes));
                 });
             }
 
             @Override
-            public void onError(CatalogClient.Failure failure) {
-                activity.runOnUiThread(() -> showRetry(
-                        failure.type == CatalogClient.FailureType.NETWORK ||
-                                failure.type == CatalogClient.FailureType.TIMEOUT
-                                ? activity.getString(R.string.no_internet)
-                                : activity.getString(R.string.load_content_failed)));
+            public void onError() {
+                activity.runOnUiThread(() -> {
+                    if (activeSeason == seasonNumber) {
+                        status.setText(R.string.no_episodes);
+                    }
+                });
             }
         });
     }
 
-    private void buildSeasons() {
-        status.setVisibility(GONE);
-        seasonsRow.removeAllViews();
-        Set<Integer> seasons = new TreeSet<>();
-        for (CatalogItem episode : allEpisodes) seasons.add(Math.max(1, episode.seasonNumber));
-        for (int season : seasons) {
-            Button button = makeButton(activity.getString(R.string.season_number, season));
-            button.setTag(season);
-            button.setOnClickListener(view -> selectSeason(season));
-            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-                    dp(television ? 145 : 112), dp(television ? 52 : 46));
-            params.setMargins(dp(4), 0, dp(4), 0);
-            seasonsRow.addView(button, params);
-        }
-        selectSeason(seasons.iterator().next());
-    }
-
-    private void selectSeason(int season) {
-        for (int index = 0; index < seasonsRow.getChildCount(); index++) {
-            View child = seasonsRow.getChildAt(index);
-            boolean selected = child.getTag() instanceof Integer && (Integer) child.getTag() == season;
-            child.setBackground(background(selected));
-        }
-        visibleEpisodes.clear();
-        for (CatalogItem episode : allEpisodes) {
-            if (Math.max(1, episode.seasonNumber) == season) visibleEpisodes.add(episode);
-        }
-        visibleEpisodes.sort(Comparator.comparingInt(item ->
-                item.episodeNumber > 0 ? item.episodeNumber : Integer.MAX_VALUE));
-        buildEpisodeButtons();
-    }
-
-    private void buildEpisodeButtons() {
+    private void renderEpisodes(List<CatalogItem> episodes) {
         episodesGrid.removeAllViews();
-        int columns = television ? 5 : 3;
-        for (int index = 0; index < visibleEpisodes.size(); index++) {
-            CatalogItem episode = visibleEpisodes.get(index);
-            CatalogItem next = index + 1 < visibleEpisodes.size() ? visibleEpisodes.get(index + 1) : null;
-            String label = episode.episodeNumber > 0
-                    ? activity.getString(R.string.episode_number, episode.episodeNumber)
-                    : episode.title;
-            Button button = makeButton(label);
-            button.setContentDescription(episode.title);
-            button.setOnClickListener(view -> listener.onEpisodeSelected(episode, next));
+        for (int i = 0; i < episodes.size(); i++) {
+            final CatalogItem episode = episodes.get(i);
+            final CatalogItem next = nextEpisode(i);
+            Button button = new Button(activity);
+            button.setText(episodeTitle(episode));
+            button.setAllCaps(false);
+            button.setTextColor(Color.WHITE);
+            button.setTextSize(television ? 14 : 12);
+            button.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+            button.setGravity(Gravity.CENTER);
+            button.setFocusable(television);
+            button.setFocusableInTouchMode(television);
+            button.setBackground(round(SURFACE, dp(10), GOLD));
+            if (television) {
+                button.setOnFocusChangeListener((v, focused) ->
+                        v.setBackground(round(focused ? PURPLE : SURFACE, dp(10),
+                                focused ? GOLD : Color.rgb(68, 54, 86))));
+            }
+            button.setOnClickListener(v -> listener.onEpisodeSelected(episode, next));
+
             GridLayout.LayoutParams params = new GridLayout.LayoutParams();
-            params.width = 0;
-            params.height = dp(television ? 58 : 52);
-            params.columnSpec = GridLayout.spec(index % columns, 1f);
-            params.rowSpec = GridLayout.spec(index / columns);
+            params.width = dp(television ? 132 : 96);
+            params.height = dp(television ? 52 : 44);
             params.setMargins(dp(4), dp(4), dp(4), dp(4));
             episodesGrid.addView(button, params);
         }
     }
 
-    private void showRetry(String message) {
-        status.setVisibility(VISIBLE);
-        status.setText(message);
-        seasonsRow.removeAllViews();
-        episodesGrid.removeAllViews();
-        Button retry = makeButton(activity.getString(R.string.retry));
-        retry.setOnClickListener(view -> load());
-        GridLayout.LayoutParams params = new GridLayout.LayoutParams();
-        params.width = dp(190);
-        params.height = dp(50);
-        episodesGrid.addView(retry, params);
-    }
-
-    private Button makeButton(String label) {
-        Button button = new Button(activity);
-        button.setText(label);
-        button.setAllCaps(false);
-        button.setTextColor(Color.WHITE);
-        button.setTextSize(television ? 15 : 12);
-        button.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-        button.setFocusable(television);
-        button.setFocusableInTouchMode(television);
-        button.setBackground(background(false));
-        if (television) {
-            button.setOnFocusChangeListener((view, focused) -> {
-                view.setBackground(background(focused));
-                view.animate().scaleX(focused ? 1.05f : 1f).scaleY(focused ? 1.05f : 1f)
-                        .setDuration(120).start();
-            });
+    private CatalogItem nextEpisode(int currentIndex) {
+        if (currentIndex + 1 < currentSeasonEpisodes.size()) {
+            return currentSeasonEpisodes.get(currentIndex + 1);
         }
-        return button;
+        // Last episode of the season: no automatic next item (user picks the next season).
+        return null;
     }
 
-    private GradientDrawable background(boolean active) {
-        GradientDrawable drawable = new GradientDrawable();
-        drawable.setColor(active ? PURPLE : Color.rgb(31, 25, 42));
-        drawable.setCornerRadius(dp(13));
-        drawable.setStroke(dp(active ? 2 : 1), active ? GOLD : Color.rgb(75, 58, 96));
-        return drawable;
+    private void updateSeasonHighlight() {
+        for (int i = 0; i < seasonButtons.size(); i++) {
+            Button chip = seasonButtons.get(i);
+            boolean active = seasons.get(i).seasonNumber == activeSeason;
+            chip.setBackground(round(active ? PURPLE : Color.rgb(29, 24, 40), dp(12),
+                    active ? GOLD : Color.rgb(68, 54, 86)));
+        }
+    }
+
+    private String episodeTitle(CatalogItem episode) {
+        String name = episode.title.trim();
+        if (name.isEmpty()) return getString(R.string.episode_number, episode.episodeNumber);
+        return getString(R.string.episode_number, episode.episodeNumber) + " • " + name;
+    }
+
+    private String getStringSeason(int seasonNumber) {
+        return activity.getString(R.string.season_number, seasonNumber);
+    }
+
+    private GradientDrawable round(int color, int radius, int stroke) {
+        GradientDrawable d = new GradientDrawable();
+        d.setColor(color);
+        d.setCornerRadius(radius);
+        d.setStroke(dp(1), stroke);
+        return d;
     }
 
     public void destroy() {
-        client.destroy();
+        tmdb.destroy();
     }
 
     private int dp(int value) {
